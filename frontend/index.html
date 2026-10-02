@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TravelAgent Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>TravelAgent</h1>
+            <p>Your AI Travel Assistant</p>
+        </header>
+
+        <main>
+            <!-- Protected Area (Shown only when authenticated) -->
+            <div id="protectedArea" class="hidden">
+                <div class="card">
+                    <h2 id="welcomeMessage">Welcome, ...</h2>
+                    
+                    <div class="actions">
+                        <button id="checkConnectionBtn">Check Backend Connection</button>
+                        <button id="logoutBtn" class="secondary">Logout</button>
+                    </div>
+                    
+                    <div id="statusArea" class="status-box hidden">
+                        <!-- Status message will appear here -->
+                    </div>
+                </div>
+
+                <!-- WebSocket UI -->
+                <div class="card mt-4">
+                    <h2>Real-time Connection (WebSocket)</h2>
+                    <div class="ws-controls">
+                        <button id="wsConnectBtn" class="primary">Connect</button>
+                        <button id="wsDisconnectBtn" class="secondary" disabled>Disconnect</button>
+                    </div>
+                    
+                    <div class="ws-status">
+                        Status: <span id="wsStatusText" class="badge disconnected">Disconnected</span>
+                    </div>
+                    
+                    <div class="ws-chat-area">
+                        <div id="wsMessages" class="messages-container"></div>
+                        <div class="ws-input-area">
+                            <input type="text" id="wsInput" placeholder="Type a message..." disabled>
+                            <button id="wsSendBtn" disabled>Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingArea" class="card">
+                <h2>Loading...</h2>
+                <p>Verifying authentication state.</p>
+            </div>
+        </main>
+    </div>
+    
+    <script src="auth.js"></script>
+    <script src="script.js"></script>
+    <script src="ws.js"></script>
+</body>
+</html>
