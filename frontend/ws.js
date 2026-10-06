@@ -1,7 +1,6 @@
 let ws = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Only initialize if we're on the dashboard
     if (!document.getElementById('protectedArea')) return;
     
     const connectBtn = document.getElementById('wsConnectBtn');
@@ -13,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function updateStatus(status) {
         statusText.textContent = status;
-        statusText.className = 'badge ' + status.toLowerCase().replace('.', '');
+        statusText.className = 'badge ' + status.toLowerCase().replace('...', '');
         
         const isConnected = status === 'Connected';
         connectBtn.disabled = isConnected || status === 'Connecting...';
@@ -30,27 +29,82 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
+    function displayPlan(plan) {
+        let html = `<div class="plan-result">
+            <h4>🗺️ Master Agent Plan</h4>
+            <p><em>${plan.request_summary || ''}</em></p>
+            <div class="plan-grid">
+                <div><strong>📍 Destination:</strong> ${plan.destination || '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>🏠 Origin:</strong> ${plan.origin || '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>📅 Duration:</strong> ${plan.duration_days ? plan.duration_days + ' days' : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>👥 Travelers:</strong> ${plan.travelers || '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>💰 Budget:</strong> ${plan.budget && plan.budget.amount ? '₹' + plan.budget.amount.toLocaleString() : '<span class="text-muted">Not specified</span>'}</div>
+            </div>`;
+        
+        if (plan.preferences && plan.preferences.length > 0) {
+            html += `<div class="plan-section">
+                <strong>🎯 Preferences:</strong>
+                <ul>${plan.preferences.map(p => `<li>${p}</li>`).join('')}</ul>
+            </div>`;
+        }
+
+        if (plan.tasks && plan.tasks.length > 0) {
+            html += `<div class="plan-section">
+                <strong>📋 Required Tasks:</strong>
+                <ul>${plan.tasks.map(t => `<li>${t}</li>`).join('')}</ul>
+            </div>`;
+        }
+        
+        if (plan.missing_information && plan.missing_information.length > 0) {
+            html += `<div class="plan-section missing">
+                <strong>⚠️ Missing Information:</strong>
+                <ul>${plan.missing_information.map(m => `<li>${m}</li>`).join('')}</ul>
+            </div>`;
+        }
+        
+        html += `</div>`;
+        
+        const msgDiv = document.createElement('div');
+        msgDiv.style.marginBottom = '10px';
+        msgDiv.innerHTML = html;
+        messagesContainer.appendChild(msgDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
     connectBtn.addEventListener('click', () => {
-        const token = getToken(); // Access token retrieved via auth.js logic
+        const token = getToken();
         if (!token) {
             alert('Authentication required! Please log in.');
             return;
         }
         
         updateStatus('Connecting...');
-        messagesContainer.innerHTML = ''; // Clear previous messages
+        messagesContainer.innerHTML = '';
         
-        // Pass token securely via query string (WSS should be used in production)
         const wsUrl = `ws://127.0.0.1:8000/ws?token=${encodeURIComponent(token)}`;
         ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
             updateStatus('Connected');
-            appendMessage('System', 'Connected to WebSocket server.');
+            appendMessage('System', '✅ Connected. Describe your travel plans below!');
         };
         
         ws.onmessage = (event) => {
-            appendMessage('Server', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.error) {
+                    appendMessage('⚠️ Error', data.error);
+                } else if (data.type === 'status' && data.status === 'processing') {
+                    appendMessage('🤖 Master Agent', '<em>Analyzing your request...</em>');
+                } else if (data.type === 'plan') {
+                    displayPlan(data.plan);
+                } else {
+                    appendMessage('Server', event.data);
+                }
+            } catch (e) {
+                appendMessage('Server', event.data);
+            }
         };
         
         ws.onclose = (event) => {
@@ -58,42 +112,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.code !== 1000 && event.code !== 1005) {
                 appendMessage('System', `Connection closed (${event.code}: ${event.reason || 'Unknown'})`);
             } else {
-                appendMessage('System', 'Disconnected from server.');
+                appendMessage('System', 'Disconnected.');
             }
             ws = null;
         };
         
-        ws.onerror = (error) => {
-            console.error('WebSocket Error:', error);
-            appendMessage('System', 'A WebSocket error occurred. Is the backend running?');
+        ws.onerror = () => {
+            appendMessage('System', '❌ WebSocket error. Is the backend running?');
             updateStatus('Disconnected');
         };
     });
     
     disconnectBtn.addEventListener('click', () => {
-        if (ws) {
-            ws.close(1000, "Client initiated disconnect");
-        }
+        if (ws) ws.close(1000, "Client disconnect");
     });
     
     function sendMessage() {
         if (ws && ws.readyState === WebSocket.OPEN) {
             const messageText = input.value.trim();
             if (messageText) {
-                // Determine if user typed raw JSON or plain text
-                let payload;
-                try {
-                    payload = JSON.parse(messageText);
-                } catch (e) {
-                    // Wrap plain text in expected JSON structure
-                    payload = {
-                        type: "message",
-                        message: messageText
-                    };
-                }
-                
+                const payload = { type: "message", message: messageText };
                 ws.send(JSON.stringify(payload));
-                appendMessage('You', JSON.stringify(payload));
+                appendMessage('You', messageText);
                 input.value = '';
             }
         }
@@ -101,8 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     sendBtn.addEventListener('click', sendMessage);
     input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
+        if (e.key === 'Enter') sendMessage();
     });
 });

@@ -1,4 +1,5 @@
 import json
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -6,10 +7,19 @@ from jose import JWTError, jwt
 from database.database import get_db
 from database.models import User
 from auth.auth import SECRET_KEY, ALGORITHM
+from agents.master_agent import MasterAgent
+
+# Setup logging for development
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
+# Initialize the Master Agent orchestrator once at startup
+master_agent = MasterAgent()
+
 def get_user_from_token(token: str, db: Session):
+    """Decode JWT and return the User object, or None if invalid."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
@@ -25,9 +35,10 @@ async def websocket_endpoint(
     token: str = Query(None), 
     db: Session = Depends(get_db)
 ):
-    # Accept the connection first so we can send clear error messages instead of an HTTP 403 (1006 in browser)
+    # Accept connection first so we can send readable error messages
     await websocket.accept()
     
+    # --- JWT Authentication ---
     if not token:
         await websocket.send_json({"error": "Missing authentication token"})
         await websocket.close(code=1008)
@@ -38,33 +49,60 @@ async def websocket_endpoint(
         await websocket.send_json({"error": "Invalid or expired authentication token"})
         await websocket.close(code=1008)
         return
+        
+    logger.info(f"WebSocket connected for user ID: {user.id} ({user.email})")
     
+    # --- Message Loop ---
     try:
         while True:
             text_data = await websocket.receive_text()
             
+            # Parse JSON
             try:
                 data = json.loads(text_data)
             except json.JSONDecodeError:
-                await websocket.send_json({"error": "Invalid JSON format. Expected JSON."})
+                await websocket.send_json({"error": "Invalid JSON format."})
                 continue
                 
-            # Process the expected message type
             if data.get("type") == "message":
-                response = {
-                    "type": "message",
-                    "message": "WebSocket connection successful",
-                    "user_id": user.id
-                }
-                await websocket.send_json(response)
+                user_message = data.get("message", "").strip()
+                
+                # Validate non-empty
+                if not user_message:
+                    await websocket.send_json({"error": "Please enter a travel request."})
+                    continue
+                
+                logger.info(f"User {user.id} request: {user_message}")
+                
+                try:
+                    # Notify frontend that the Master Agent is processing
+                    await websocket.send_json({
+                        "type": "status",
+                        "status": "processing"
+                    })
+                    
+                    # Call the Master Agent orchestrator
+                    plan = master_agent.process_request(user_message)
+                    
+                    # Return the structured plan
+                    await websocket.send_json({
+                        "type": "plan",
+                        "plan": plan.model_dump()
+                    })
+                    logger.info(f"Plan sent to user {user.id}")
+                    
+                except ValueError as ve:
+                    await websocket.send_json({"error": str(ve)})
+                except Exception as e:
+                    logger.error(f"Master Agent error for user {user.id}: {e}")
+                    await websocket.send_json({"error": "Failed to process your request. Please try again."})
             else:
                 await websocket.send_json({"error": "Unknown message type."})
                 
     except WebSocketDisconnect:
-        # Client disconnected normally
-        pass
+        logger.info(f"User {user.id} disconnected.")
     except Exception as e:
-        # Prevent server crash on unexpected error
+        logger.error(f"Unexpected WebSocket error for user {user.id}: {e}")
         try:
             await websocket.close(code=1011)
         except:

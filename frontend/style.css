@@ -195,7 +195,7 @@ button:disabled {
 .badge.connected { background-color: #10b981; }
 
 .messages-container {
-    height: 150px;
+    height: 300px;
     border: 1px solid #cbd5e1;
     border-radius: var(--border-radius);
     overflow-y: auto;
@@ -203,9 +203,9 @@ button:disabled {
     margin-bottom: 1rem;
     background: #f1f5f9;
     text-align: left;
-    font-family: monospace;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 0.9rem;
-    word-break: break-all;
+    word-break: break-word;
 }
 
 .ws-input-area {
@@ -218,7 +218,7 @@ button:disabled {
     padding: 8px;
     border: 1px solid #cbd5e1;
     border-radius: var(--border-radius);
-    font-family: monospace;
+    font-size: 0.9rem;
 }
 
 .ws-input-area input:disabled {
@@ -229,3 +229,54 @@ button:disabled {
 .ws-input-area button {
     margin-top: 0;
 }
+
+/* Master Agent Plan Styles */
+.plan-result {
+    background: white;
+    border: 1px solid #cbd5e1;
+    border-radius: var(--border-radius);
+    padding: 12px;
+    margin-top: 5px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-color);
+}
+
+.plan-result h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.plan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.plan-section {
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.plan-section ul {
+    margin: 5px 0 0 0;
+    padding-left: 20px;
+}
+
+.plan-section.missing {
+    color: var(--error-text);
+}
+
+.subtitle {
+    color: #64748b;
+    font-size: 0.9rem;
+    margin-top: -5px;
+}
+
+.text-muted {
+    color: #94a3b8;
+    font-style: italic;
+}
+

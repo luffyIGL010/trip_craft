@@ -20,20 +20,20 @@
                     <h2 id="welcomeMessage">Welcome, ...</h2>
                     
                     <div class="actions">
-                        <button id="checkConnectionBtn">Check Backend Connection</button>
+                        <button id="checkConnectionBtn">Check Backend</button>
                         <button id="logoutBtn" class="secondary">Logout</button>
                     </div>
                     
-                    <div id="statusArea" class="status-box hidden">
-                        <!-- Status message will appear here -->
-                    </div>
+                    <div id="statusArea" class="status-box hidden"></div>
                 </div>
 
-                <!-- WebSocket UI -->
+                <!-- Master Agent Chat UI -->
                 <div class="card mt-4">
-                    <h2>Real-time Connection (WebSocket)</h2>
+                    <h2>Plan Your Trip</h2>
+                    <p class="subtitle">Describe your travel plans and the Master Agent will create a structured plan.</p>
+
                     <div class="ws-controls">
-                        <button id="wsConnectBtn" class="primary">Connect</button>
+                        <button id="wsConnectBtn">Connect</button>
                         <button id="wsDisconnectBtn" class="secondary" disabled>Disconnect</button>
                     </div>
                     
@@ -44,7 +44,7 @@
                     <div class="ws-chat-area">
                         <div id="wsMessages" class="messages-container"></div>
                         <div class="ws-input-area">
-                            <input type="text" id="wsInput" placeholder="Type a message..." disabled>
+                            <input type="text" id="wsInput" placeholder="e.g. Plan a 5 day trip to Goa from Delhi for 2 people under ₹50,000" disabled>
                             <button id="wsSendBtn" disabled>Send</button>
                         </div>
                     </div>
