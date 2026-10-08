@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from .schemas import MasterAgentResponse, Dates, Budget
+from .travel_agent import TravelAgent
 
 logger = logging.getLogger(__name__)
 
@@ -10,9 +11,9 @@ SYSTEM_PROMPT = """You are a Master Travel Agent Orchestrator. Your ONLY job is 
 
 You must extract the following from the user's message:
 - request_summary: A brief one-line summary of the user's request.
-- destination: The travel destination (or null if not provided).
-- origin: Where they are traveling from (or null if not provided).
-- dates: An object with "start" and "end" date strings (or null if not provided).
+- destination: The travel destination (use uppercase 3-letter IATA airport code if possible, or null if not provided).
+- origin: Where they are traveling from (use uppercase 3-letter IATA airport code if possible, or null if not provided).
+- dates: An object with "start" and "end" date strings (or null if not provided). If possible, guess dates format as YYYY-MM-DD for the near future.
 - duration_days: Number of days for the trip (or null if not provided).
 - travelers: Number of travelers (or null if not provided).
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
@@ -25,38 +26,6 @@ Rules:
 2. If critical info is missing, add it to the missing_information list.
 3. Always include relevant tasks from the allowed task list.
 4. Return ONLY valid JSON matching the schema. No extra text or markdown."""
-
-# The JSON schema we ask the LLM to follow
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "request_summary": {"type": "string"},
-        "destination": {"type": ["string", "null"]},
-        "origin": {"type": ["string", "null"]},
-        "dates": {
-            "type": "object",
-            "properties": {
-                "start": {"type": ["string", "null"]},
-                "end": {"type": ["string", "null"]}
-            }
-        },
-        "duration_days": {"type": ["integer", "null"]},
-        "travelers": {"type": ["integer", "null"]},
-        "budget": {
-            "type": "object",
-            "properties": {
-                "amount": {"type": ["number", "null"]},
-                "currency": {"type": "string"}
-            }
-        },
-        "preferences": {"type": "array", "items": {"type": "string"}},
-        "tasks": {"type": "array", "items": {"type": "string"}},
-        "missing_information": {"type": "array", "items": {"type": "string"}}
-    },
-    "required": ["request_summary", "destination", "origin", "dates", "duration_days",
-                  "travelers", "budget", "preferences", "tasks", "missing_information"]
-}
-
 
 class MasterAgent:
     def __init__(self):
@@ -74,18 +43,41 @@ class MasterAgent:
                 logger.warning(f"Failed to initialize Groq client: {e}. Running in mock mode.")
         else:
             logger.warning("No GROQ_API_KEY found in environment. MasterAgent running in mock mode.")
+            
+        self.travel_agent = TravelAgent()
 
-    def process_request(self, user_message: str) -> MasterAgentResponse:
-        """Main entry point: analyze a user's travel request and return a structured plan."""
+    async def process_request(self, user_message: str, status_callback=None) -> dict:
+        """Main entry point: analyze a user's travel request and return a structured plan with delegated results."""
         logger.info(f"Master Agent received request: {user_message}")
 
         if not user_message or not user_message.strip():
             raise ValueError("Empty message. Please describe your travel plans.")
 
+        if status_callback:
+            await status_callback("master_agent", "processing")
+
         if self.client:
-            return self._call_llm(user_message)
+            plan = self._call_llm(user_message)
         else:
-            return self._mock_response(user_message)
+            plan = self._mock_response(user_message)
+            
+        response_data = {
+            "plan": plan.model_dump(),
+            "transport_results": None
+        }
+        
+        # Phase 5: Delegate to Travel Agent if "find_transport" is a task
+        if "find_transport" in plan.tasks:
+            if status_callback:
+                await status_callback("travel_agent", "searching_transport")
+                
+            transport_result = await self.travel_agent.execute(plan)
+            response_data["transport_results"] = transport_result.model_dump()
+            
+            if status_callback:
+                await status_callback("travel_agent", "completed")
+                
+        return response_data
 
     def _call_llm(self, user_message: str) -> MasterAgentResponse:
         """Call the Groq LLM API to parse the user's request into a structured plan."""
@@ -93,7 +85,7 @@ class MasterAgent:
             logger.info("Calling Groq LLM API...")
 
             response = self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-20b",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
@@ -108,24 +100,27 @@ class MasterAgent:
 
             data = json.loads(raw_text)
 
-            # Safely build the response using Pydantic
+            # Safely build the response using Pydantic, handling explicit nulls
+            dates_data = data.get("dates") or {}
+            budget_data = data.get("budget") or {}
+
             plan = MasterAgentResponse(
                 request_summary=data.get("request_summary", ""),
                 destination=data.get("destination"),
                 origin=data.get("origin"),
                 dates=Dates(
-                    start=data.get("dates", {}).get("start"),
-                    end=data.get("dates", {}).get("end")
+                    start=dates_data.get("start"),
+                    end=dates_data.get("end")
                 ),
                 duration_days=data.get("duration_days"),
                 travelers=data.get("travelers"),
                 budget=Budget(
-                    amount=data.get("budget", {}).get("amount"),
-                    currency=data.get("budget", {}).get("currency", "INR")
+                    amount=budget_data.get("amount"),
+                    currency=budget_data.get("currency", "INR")
                 ),
-                preferences=data.get("preferences", []),
-                tasks=data.get("tasks", []),
-                missing_information=data.get("missing_information", [])
+                preferences=data.get("preferences") or [],
+                tasks=data.get("tasks") or [],
+                missing_information=data.get("missing_information") or []
             )
 
             logger.info("Master Agent plan generated successfully.")

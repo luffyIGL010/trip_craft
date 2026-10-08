@@ -75,21 +75,23 @@ async def websocket_endpoint(
                 logger.info(f"User {user.id} request: {user_message}")
                 
                 try:
-                    # Notify frontend that the Master Agent is processing
-                    await websocket.send_json({
-                        "type": "status",
-                        "status": "processing"
-                    })
+                    # Provide an async callback for status updates
+                    async def send_status(agent_name, status):
+                        await websocket.send_json({
+                            "type": "agent_status",
+                            "agent": agent_name,
+                            "status": status
+                        })
                     
-                    # Call the Master Agent orchestrator
-                    plan = master_agent.process_request(user_message)
+                    # Call the Master Agent orchestrator (which delegates to Travel Agent)
+                    result_data = await master_agent.process_request(user_message, status_callback=send_status)
                     
-                    # Return the structured plan
+                    # Return the structured plan and transport results
                     await websocket.send_json({
                         "type": "plan",
-                        "plan": plan.model_dump()
+                        "data": result_data
                     })
-                    logger.info(f"Plan sent to user {user.id}")
+                    logger.info(f"Plan and results sent to user {user.id}")
                     
                 except ValueError as ve:
                     await websocket.send_json({"error": str(ve)})
