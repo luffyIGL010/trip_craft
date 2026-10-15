@@ -67,8 +67,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render Phase 5 Transport Results
         if (transportResults) {
+            const isRoundTrip = transportResults.trip_type === "round_trip" || !!transportResults.return_date;
+            const priceLabelText = transportResults.price_label || (isRoundTrip ? "Total for round trip" : "Total price");
+
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid var(--primary-color);">
-                <h4>✈️ Transport Options ${transportResults.is_mock ? '<span class="badge" style="background:#eab308; color:white;">Mock Data</span>' : ''}</h4>`;
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4 style="margin:0;">✈️ Transport Options</h4>
+                    <div>
+                        ${isRoundTrip ? '<span class="badge" style="background:#0284c7; color:white; margin-right:4px;">Round Trip</span>' : '<span class="badge" style="background:#64748b; color:white; margin-right:4px;">One Way</span>'}
+                        ${transportResults.is_mock ? '<span class="badge" style="background:#eab308; color:white;">Mock Data</span>' : ''}
+                    </div>
+                </div>`;
             
             if (transportResults.status === "needs_information") {
                 html += `<div class="plan-section missing">
@@ -81,23 +90,83 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p>${transportResults.message}</p>
                 </div>`;
             } else if (transportResults.status === "success" && transportResults.options.length > 0) {
-                html += `<p><strong>${transportResults.origin} → ${transportResults.destination}</strong></p>`;
-                html += `<div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">`;
+                // Trip Header Summary
+                html += `<div style="margin-top:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
+                    <div style="font-size:0.95rem;"><strong>${transportResults.origin} ${isRoundTrip ? '⇄' : '→'} ${transportResults.destination}</strong></div>
+                    <div style="font-size:0.85rem; color:#64748b;">
+                        📅 ${transportResults.outbound_date ? 'Outbound: ' + transportResults.outbound_date : ''}
+                        ${transportResults.return_date ? ' | Return: ' + transportResults.return_date : ''}
+                        ${transportResults.travelers ? ' | 👥 ' + transportResults.travelers + ' traveler(s)' : ''}
+                    </div>
+                </div>`;
+
+                // Accurate Total Price Callout (Requirement 4)
+                html += `<div style="font-size:0.85rem; color:#0369a1; background:#f0f9ff; padding:6px 10px; border-radius:4px; margin:8px 0; border:1px solid #bae6fd;">
+                    <strong>💰 Price Notice:</strong> All fares shown are <strong>${priceLabelText}</strong> (all requested passengers combined).
+                </div>`;
+
+                // Outbound Flights Section (Requirement 3)
+                html += `<div style="margin-top:10px;">
+                    <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                        <span>🛫 Outbound Flights</span>
+                        <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.origin} → ${transportResults.destination} • ${transportResults.outbound_date || ''})</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">`;
                 
                 transportResults.options.forEach((opt, idx) => {
-                    html += `<div style="border:1px solid #e2e8f0; border-radius:4px; padding:10px; background:#f8fafc;">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                            <strong>Option ${idx + 1}: ${opt.provider}</strong>
-                            <strong style="color:var(--primary-color)">₹${opt.price.toLocaleString()}</strong>
+                    const providerName = opt.provider || "Provider Not Specified";
+                    const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${opt.outbound_leg.flight_number}</span>` : '';
+                    const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${opt.outbound_leg.airplane}` : '';
+                    
+                    html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <div style="display:flex; align-items:center;">
+                                <strong style="color:#0f172a;">Option ${idx + 1}: ${providerName}</strong>
+                                ${flightNumBadge}
+                            </div>
+                            <div style="text-align:right;">
+                                <strong style="color:var(--primary-color); font-size:1.05rem;">₹${opt.price.toLocaleString()}</strong>
+                                <span style="font-size:0.75rem; color:#64748b; display:block;">total</span>
+                            </div>
                         </div>
-                        <div style="font-size:0.85rem; color:#475569;">
-                            Departure: ${opt.departure} | Arrival: ${opt.arrival} <br>
-                            Duration: ${opt.duration} | Stops: ${opt.stops}
+                        <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
+                            <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}</div>
+                            <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
                         </div>
                     </div>`;
                 });
-                
-                html += `</div>`;
+                html += `</div></div>`;
+
+                // Return Flights Section if round-trip and provided (Requirement 3)
+                if (transportResults.return_options && transportResults.return_options.length > 0) {
+                    html += `<div style="margin-top:14px;">
+                        <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                            <span>🛬 Return Flights</span>
+                            <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.destination} → ${transportResults.origin} • ${transportResults.return_date || ''})</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">`;
+
+                    transportResults.return_options.forEach((opt, idx) => {
+                        const providerName = opt.provider || "Provider Not Specified";
+                        const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${opt.outbound_leg.flight_number}</span>` : '';
+                        const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${opt.outbound_leg.airplane}` : '';
+
+                        html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f0fdf4;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <div style="display:flex; align-items:center;">
+                                    <strong style="color:#0f172a;">Return Option ${idx + 1}: ${providerName}</strong>
+                                    ${flightNumBadge}
+                                </div>
+                                <span style="font-size:0.8rem; color:#166534; font-weight:500; background:#dcfce7; padding:2px 6px; border-radius:4px;">Return Flight</span>
+                            </div>
+                            <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
+                                <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}</div>
+                                <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
+                            </div>
+                        </div>`;
+                    });
+                    html += `</div></div>`;
+                }
             } else {
                  html += `<p>No transport options found.</p>`;
             }
