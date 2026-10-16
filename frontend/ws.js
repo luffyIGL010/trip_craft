@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
         messagesContainer.appendChild(msgDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
     function escapeHtml(text) {
         if (text === null || text === undefined) return '';
         const div = document.createElement('div');
