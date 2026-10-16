@@ -67,6 +67,40 @@ def build_leg(flight_data: dict) -> FlightLeg:
         airplane=airplane
     )
 
+# Recognized ambiguous states and regions that are not specific commercial airports
+AMBIGUOUS_REGIONS: dict = {
+    "UTTARAKHAND": "Uttarakhand is an Indian state with multiple regional airports (such as Dehradun - DED or Pantnagar - PGH).",
+    "HIMACHAL PRADESH": "Himachal Pradesh is a state with multiple airports (such as Kullu - KUU, Kangra - DHM, or Shimla - SLV).",
+    "RAJASTHAN": "Rajasthan is a state with multiple airports (such as Jaipur - JAI, Udaipur - UDR, or Jodhpur - JDH).",
+    "KERALA": "Kerala is a state with multiple airports (such as Kochi - COK, Thiruvananthapuram - TRV, or Kozhikode - CCJ).",
+    "UTTAR PRADESH": "Uttar Pradesh is a state with multiple airports (such as Lucknow - LKO or Varanasi - VNS).",
+    "MADHYA PRADESH": "Madhya Pradesh is a state with multiple airports (such as Bhopal - BHO or Indore - IDR).",
+    "MAHARASHTRA": "Maharashtra is a state with multiple airports (such as Mumbai - BOM or Pune - PNQ).",
+    "GUJARAT": "Gujarat is a state with multiple airports (such as Ahmedabad - AMD or Surat - STV).",
+    "PUNJAB": "Punjab is a state with multiple airports (such as Amritsar - ATQ or Chandigarh - IXC).",
+    "TAMIL NADU": "Tamil Nadu is a state with multiple airports (such as Chennai - MAA or Coimbatore - CJB).",
+    "KARNATAKA": "Karnataka is a state with multiple airports (such as Bengaluru - BLR or Mangaluru - IXE).",
+    "WEST BENGAL": "West Bengal is a state with multiple airports (such as Kolkata - CCU or Bagdogra - IXB).",
+    "CALIFORNIA": "California is a state with multiple airports (such as LAX, SFO, or SAN).",
+    "TEXAS": "Texas is a state with multiple airports (such as DFW, IAH, or AUS).",
+    "FLORIDA": "Florida is a state with multiple airports (such as MIA, MCO, or FLL).",
+}
+
+CITY_TO_IATA: dict = {
+    "TOKYO": "HND", "NEW YORK": "JFK", "DELHI": "DEL", "MUMBAI": "BOM",
+    "GOA": "GOI", "LONDON": "LHR", "PARIS": "CDG", "DUBAI": "DXB",
+    "SINGAPORE": "SIN", "BANGKOK": "BKK", "SYDNEY": "SYD", "SAN FRANCISCO": "SFO",
+    "LOS ANGELES": "LAX", "CHICAGO": "ORD", "DEHRADUN": "DED", "PANTNAGAR": "PGH",
+    "JAIPUR": "JAI", "BANGALORE": "BLR", "BENGALURU": "BLR", "CHENNAI": "MAA",
+    "KOLKATA": "CCU", "HYDERABAD": "HYD", "AHMEDABAD": "AMD", "PUNE": "PNQ",
+    "KOCHI": "COK", "COCHIN": "COK", "CHANDIGARH": "IXC", "LUCKNOW": "LKO",
+    "VARANASI": "VNS", "AMRITSAR": "ATQ", "SRINAGAR": "SXR"
+}
+
+def is_valid_iata(code: str) -> bool:
+    """Check if code is a 3-letter alphabetic IATA airport code."""
+    return bool(code and len(code) == 3 and code.isalpha())
+
 class TravelAgent:
     def __init__(self):
         self.api_client = TransportAPIClient()
@@ -102,17 +136,59 @@ class TravelAgent:
         travelers = plan.travelers or 1
         is_round_trip = bool(return_date)
 
-        # Resolve city names to 3-letter IATA codes if applicable
-        city_to_iata = {
-            "TOKYO": "HND", "NEW YORK": "JFK", "DELHI": "DEL", "MUMBAI": "BOM",
-            "GOA": "GOI", "LONDON": "LHR", "PARIS": "CDG", "DUBAI": "DXB",
-            "SINGAPORE": "SIN", "BANGKOK": "BKK", "SYDNEY": "SYD", "SAN FRANCISCO": "SFO",
-            "LOS ANGELES": "LAX", "CHICAGO": "ORD"
-        }
-        origin_code = city_to_iata.get(plan.origin.strip().upper(), plan.origin.strip())
-        dest_code = city_to_iata.get(plan.destination.strip().upper(), plan.destination.strip())
+        origin_raw = plan.origin.strip()
+        dest_raw = plan.destination.strip()
+        origin_upper = origin_raw.upper()
+        dest_upper = dest_raw.upper()
 
-        # 2. Call Transport API with both dates if round-trip
+        # 2. Ambiguous origin check (e.g., Uttarakhand is a state, not an airport)
+        if origin_upper in AMBIGUOUS_REGIONS and origin_upper != "GOA":
+            detail = AMBIGUOUS_REGIONS[origin_upper]
+            logger.info(f"Ambiguous origin detected: '{origin_raw}' is a state/region. {detail}")
+            return TransportResult(
+                status="needs_information",
+                origin=origin_raw,
+                destination=dest_raw,
+                outbound_date=outbound_date,
+                return_date=return_date,
+                travelers=travelers,
+                missing_information=["departure_city_or_airport"],
+                message=f"'{origin_raw}' is a state rather than a specific airport. {detail} Please specify your departure city or airport (e.g., Dehradun - DED) before searching for flights."
+            )
+
+        # 3. Resolve city names to 3-letter IATA codes if applicable
+        origin_code = CITY_TO_IATA.get(origin_upper, origin_upper)
+        dest_code = CITY_TO_IATA.get(dest_upper, dest_upper)
+
+        # Validate departure airport code format
+        if not is_valid_iata(origin_code):
+            logger.info(f"Origin '{origin_raw}' could not be resolved to a valid airport code.")
+            return TransportResult(
+                status="needs_information",
+                origin=origin_raw,
+                destination=dest_raw,
+                outbound_date=outbound_date,
+                return_date=return_date,
+                travelers=travelers,
+                missing_information=["departure_city_or_airport"],
+                message=f"Could not identify a departure airport for '{origin_raw}'. Please specify your departure city or 3-letter airport code (e.g., DEL for Delhi, BOM for Mumbai)."
+            )
+
+        # Validate destination airport code format
+        if not is_valid_iata(dest_code):
+            logger.info(f"Destination '{dest_raw}' could not be resolved to a valid airport code.")
+            return TransportResult(
+                status="needs_information",
+                origin=origin_raw,
+                destination=dest_raw,
+                outbound_date=outbound_date,
+                return_date=return_date,
+                travelers=travelers,
+                missing_information=["destination_city_or_airport"],
+                message=f"Could not identify a destination airport for '{dest_raw}'. Please specify your destination city or 3-letter airport code (e.g., BOM for Mumbai)."
+            )
+
+        # 4. Call Transport API with both dates if round-trip
         try:
             logger.info(
                 f"Travel Agent searching flights: {origin_code} -> {dest_code} "

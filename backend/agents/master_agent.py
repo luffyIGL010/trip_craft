@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import re
+from datetime import datetime
 from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
 from .hotel_agent import HotelAgent
@@ -13,18 +15,18 @@ SYSTEM_PROMPT = """You are a Master Travel Agent Orchestrator. Your ONLY job is 
 You must extract the following from the user's message:
 - request_summary: A brief one-line summary of the user's request.
 - destination: The travel destination (city name or uppercase 3-letter IATA airport code, or null if not provided).
-- origin: Where they are traveling from (uppercase 3-letter IATA airport code or city name, or null if not provided).
-- dates: An object with "start" and "end" date strings (or null if not provided). Guess dates format as YYYY-MM-DD for the near future if specified (e.g., November 10 to November 17, 2026 -> start: "2026-11-10", end: "2026-11-17").
-- duration_days: Number of days for the trip (or null if not provided).
+- origin: Where they are traveling from (uppercase 3-letter IATA airport code, city name, or state/region name, or null if not provided).
+- dates: An object with "start" and "end" date strings (or null if not provided). Guess dates format as YYYY-MM-DD for the near future if specified (e.g., November 10 to November 17, 2026 -> start: "2026-11-10", end: "2026-11-17"; 27 Dec to 31 Dec -> start: "2026-12-27", end: "2026-12-31").
+- duration_days: Number of days/nights for the trip, calculated as the difference between end and start dates (or null if not provided).
 - travelers: Number of travelers/adults (or null if not provided).
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
 - tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip.
-- missing_information: A list of important missing details the user did not provide (e.g. "origin", "budget", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels.
+- missing_information: A list of important missing details the user did not provide (e.g. "origin", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels. Budget is optional and should NOT be added to missing_information merely because it is unspecified.
 
 Rules:
 1. Do NOT invent information the user did not provide. Use null for unknown fields.
-2. If critical info is missing, add it to the missing_information list.
+2. If critical info is missing, add it to the missing_information list. Do NOT treat budget as required.
 3. Always include relevant tasks from the allowed task list.
 4. Return ONLY valid JSON matching the schema. No extra text or markdown."""
 
