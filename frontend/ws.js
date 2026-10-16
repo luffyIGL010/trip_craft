@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += `<div style="margin-top:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
                     <div style="font-size:0.95rem;"><strong>📍 ${escapeHtml(hotelResults.destination || 'Destination')}</strong></div>
                     <div style="font-size:0.85rem; color:#64748b;">
-                        📅 Check-in: ${escapeHtml(hotelResults.check_in || 'N/A')} | Check-out: ${escapeHtml(hotelResults.check_out || 'N/A')} | 👥 Adults: ${hotelResults.adults || 2}
+                        📅 Check-in: ${escapeHtml(hotelResults.check_in || 'N/A')} | Check-out: ${escapeHtml(hotelResults.check_out || 'N/A')} ${hotelResults.nights ? `| 🌙 ${hotelResults.nights} nights` : ''} | 👥 Adults: ${hotelResults.adults || 2}
                     </div>
                 </div>`;
 
@@ -233,14 +233,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     let priceHtml = '';
+                    const cur = escapeHtml(h.currency || 'EUR');
                     if (h.nightly_price) {
-                        const cur = escapeHtml(h.currency || 'EUR');
-                        const totalStr = h.total_price ? ` • <strong>${cur} ${h.total_price.toLocaleString()}</strong> total` : '';
+                        let totalPart = '';
+                        if (h.total_price) {
+                            totalPart = ` • <strong>${cur} ${h.total_price.toLocaleString()}</strong> total`;
+                        } else if (h.price_label) {
+                            totalPart = ` • <span style="font-size:0.75rem; color:#854d0e; background:#fef9c3; padding:2px 6px; border-radius:3px;">${escapeHtml(h.price_label)}</span>`;
+                        }
                         const nightsStr = h.nights ? ` (${h.nights} nights)` : '';
-                        priceHtml = `<span style="color:#059669; font-weight:700; font-size:1.05rem;">${cur} ${h.nightly_price.toLocaleString()}</span> <span style="font-size:0.75rem; color:#64748b;">/night${totalStr}${nightsStr}</span>`;
+                        priceHtml = `<span style="color:#059669; font-weight:700; font-size:1.05rem;">${cur} ${h.nightly_price.toLocaleString()}</span> <span style="font-size:0.75rem; color:#64748b;">/night${totalPart}${nightsStr}</span>`;
                     } else if (h.total_price) {
-                        const cur = escapeHtml(h.currency || 'EUR');
                         priceHtml = `<span style="color:#059669; font-weight:700; font-size:1.05rem;">${cur} ${h.total_price.toLocaleString()}</span> <span style="font-size:0.75rem; color:#64748b;">total</span>`;
+                    } else if (h.price_label) {
+                        priceHtml = `<span style="font-size:0.8rem; color:#854d0e; background:#fef9c3; padding:2px 6px; border-radius:3px;">${escapeHtml(h.price_label)}</span>`;
                     } else {
                         priceHtml = `<span style="font-size:0.85rem; color:#64748b;">Price on request</span>`;
                     }
@@ -280,7 +286,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 html += `</div>`;
             } else {
-                html += `<p style="font-size:0.9rem; color:#64748b;">No accommodation options found.</p>`;
+                const hotelMsg = hotelResults.message || 'No accommodation options found for this destination.';
+                html += `<div style="margin-top:10px; padding:10px 14px; background:#f8fafc; border-left:4px solid #f59e0b; border-radius:4px; font-size:0.9rem; color:#334155;">
+                    ℹ️ <strong>Accommodation Status:</strong> ${escapeHtml(hotelMsg)}
+                </div>`;
             }
             html += `</div>`;
         }

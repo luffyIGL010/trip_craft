@@ -102,7 +102,7 @@ class MasterAgent:
             logger.info("Calling Groq LLM API...")
 
             response = self.client.chat.completions.create(
-                model="openai/gpt-oss-20b",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
@@ -121,6 +121,21 @@ class MasterAgent:
             dates_data = data.get("dates") or {}
             budget_data = data.get("budget") or {}
 
+            # Calculate duration_days accurately if start and end dates are provided
+            duration_days = data.get("duration_days")
+            if dates_data.get("start") and dates_data.get("end"):
+                try:
+                    d_s = datetime.strptime(dates_data["start"], "%Y-%m-%d").date()
+                    d_e = datetime.strptime(dates_data["end"], "%Y-%m-%d").date()
+                    if d_e > d_s:
+                        duration_days = (d_e - d_s).days
+                except Exception:
+                    pass
+
+            # Budget is optional - filter out "budget" from missing_information if present
+            raw_missing = data.get("missing_information") or []
+            filtered_missing = [m for m in raw_missing if m.lower() != "budget"]
+
             plan = MasterAgentResponse(
                 request_summary=data.get("request_summary", ""),
                 destination=data.get("destination"),
@@ -129,7 +144,7 @@ class MasterAgent:
                     start=dates_data.get("start"),
                     end=dates_data.get("end")
                 ),
-                duration_days=data.get("duration_days"),
+                duration_days=duration_days,
                 travelers=data.get("travelers"),
                 budget=Budget(
                     amount=budget_data.get("amount"),
@@ -137,68 +152,122 @@ class MasterAgent:
                 ),
                 preferences=data.get("preferences") or [],
                 tasks=data.get("tasks") or [],
-                missing_information=data.get("missing_information") or []
+                missing_information=filtered_missing
             )
 
-            logger.info("Master Agent plan generated successfully.")
+            logger.info("Master Agent plan generated successfully via LLM.")
             return plan
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM JSON response: {e}")
-            raise Exception("AI returned an invalid response. Please try again.")
         except Exception as e:
-            logger.error(f"LLM API call failed: {e}")
-            raise Exception("Failed to process your request with the AI provider. Please try again.")
+            logger.warning(f"LLM API call failed ({e}). Falling back to robust mock response.")
+            return self._mock_response(user_message)
 
     def _mock_response(self, user_message: str) -> MasterAgentResponse:
-        """Fallback mock response when no LLM API key is configured."""
-        logger.info("Generating mock response (no API key configured)")
+        """Fallback mock response when no LLM API key is configured or LLM is unreachable."""
+        logger.info("Generating mock response (fallback parser)")
         msg = user_message.lower()
 
-        # Simple keyword extraction for testing
+        # 1. Extract destination and origin using regex patterns
         destination = None
-        for place in ["goa", "paris", "manali", "jaipur", "mumbai", "london", "tokyo", "hnd"]:
-            if place in msg:
-                destination = "HND" if place in ["tokyo", "hnd"] else place.title()
-                break
+        origin = None
+
+        m_to_from = re.search(r'\bto\s+([A-Za-z\s]+?)\s+from\s+([A-Za-z\s]+?)(?:\s+from|\s+for|\s+under|\s+on|\s+with|\s*$)', user_message, re.I)
+        if m_to_from:
+            destination = m_to_from.group(1).strip().title()
+            origin = m_to_from.group(2).strip().title()
+        else:
+            m_from_to = re.search(r'\bfrom\s+([A-Za-z\s]+?)\s+to\s+([A-Za-z\s]+?)(?:\s+from|\s+for|\s+under|\s+on|\s+with|\s*$)', user_message, re.I)
+            if m_from_to:
+                origin = m_from_to.group(1).strip().title()
+                destination = m_from_to.group(2).strip().title()
+
+        # Keyword destination fallbacks if not extracted
+        if not destination:
+            for place in ["goa", "paris", "manali", "jaipur", "mumbai", "london", "tokyo", "hnd"]:
+                if place in msg:
+                    destination = "HND" if place in ["tokyo", "hnd"] else place.title()
+                    break
         if not destination:
             destination = "Unknown Destination"
 
-        origin = "Delhi" if "delhi" in msg else ("JFK" if ("jfk" in msg or "new york" in msg) else None)
+        # Keyword origin fallbacks if not extracted
+        if not origin:
+            if "delhi" in msg:
+                origin = "Delhi"
+            elif "uttarakhand" in msg:
+                origin = "Uttarakhand"
+            elif "jfk" in msg or "new york" in msg:
+                origin = "JFK"
 
-        # Dates extraction for testing
+        # 2. Date extraction
         start_date = None
         end_date = None
-        if "november 10" in msg or "2026-11-10" in msg:
-            start_date = "2026-11-10"
-        if "november 17" in msg or "2026-11-17" in msg:
-            end_date = "2026-11-17"
 
+        # Check ISO format
+        iso_dates = re.findall(r'\b(\d{4}-\d{2}-\d{2})\b', msg)
+        if len(iso_dates) >= 2:
+            start_date, end_date = iso_dates[0], iso_dates[1]
+        else:
+            months = {
+                'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+                'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+                'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, 'october': 10,
+                'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+            }
+            month_rx = '|'.join(months.keys())
+
+            # e.g. '27 dec to 31 dec'
+            m1 = re.search(rf'(\d{{1,2}})\s*({month_rx})\b.*?(?:to|-)\s*(\d{{1,2}})\s*({month_rx})\b', msg)
+            if m1:
+                d1, mo1, d2, mo2 = m1.groups()
+                start_date = f"2026-{months[mo1]:02d}-{int(d1):02d}"
+                end_date = f"2026-{months[mo2]:02d}-{int(d2):02d}"
+            else:
+                # e.g. 'november 10 to november 17' or 'december 27 to december 31'
+                m2 = re.search(rf'({month_rx})\s*(\d{{1,2}})\b.*?(?:to|-)\s*(?:({month_rx})\s*)?(\d{{1,2}})\b', msg)
+                if m2:
+                    mo1, d1, mo2, d2 = m2.groups()
+                    mo2 = mo2 or mo1
+                    start_date = f"2026-{months[mo1]:02d}-{int(d1):02d}"
+                    end_date = f"2026-{months[mo2]:02d}-{int(d2):02d}"
+
+        # Calculate duration in days/nights
         duration = None
         if start_date and end_date:
-            duration = 7
+            try:
+                d_s = datetime.strptime(start_date, "%Y-%m-%d").date()
+                d_e = datetime.strptime(end_date, "%Y-%m-%d").date()
+                if d_e > d_s:
+                    duration = (d_e - d_s).days
+            except Exception:
+                duration = 7
         else:
             for i in range(1, 31):
                 if f"{i} day" in msg:
                     duration = i
                     break
 
+        # 3. Travelers
         travelers = None
         for i in range(1, 11):
-            if f"{i} people" in msg or f"{i} person" in msg or f"{i} travelers" in msg:
+            if f"{i} people" in msg or f"{i} person" in msg or f"{i} travelers" in msg or f"{i} adults" in msg:
                 travelers = i
                 break
+        if not travelers:
+            if "two people" in msg or "2 people" in msg:
+                travelers = 2
+            elif "four people" in msg or "4 people" in msg:
+                travelers = 4
 
+        # 4. Budget
         budget_amount = None
         if "50000" in msg or "50,000" in msg:
             budget_amount = 50000.0
-        elif "budget" in msg:
-            budget_amount = None  # mentioned but no number
 
-        # Determine tasks based on user intent
+        # 5. Determine tasks
         is_hotel_intent = "hotel" in msg or "hotels" in msg or "stay" in msg or "accommodation" in msg
         is_flight_intent = "flight" in msg or "flights" in msg or "fly" in msg or "transport" in msg
-        is_general_trip = "plan a trip" in msg or "trip to" in msg or "plan a 5 day" in msg or "plan a 7" in msg
+        is_general_trip = "plan a trip" in msg or "trip to" in msg or "plan a 5 day" in msg or "plan a 7" in msg or "plan a" in msg
 
         tasks = []
         if is_flight_intent or (is_general_trip and not is_hotel_intent):
@@ -210,7 +279,7 @@ class MasterAgent:
         if not tasks:
             tasks = ["find_transport", "find_hotel"]
 
-        # Determine missing info
+        # 6. Determine missing information (budget is optional and never required)
         missing = []
         if "find_transport" in tasks and not origin:
             missing.append("origin")
@@ -220,8 +289,6 @@ class MasterAgent:
             missing.append("check_out_date")
         if not travelers:
             missing.append("number of travelers")
-        if budget_amount is None and not is_hotel_intent:
-            missing.append("budget")
 
         return MasterAgentResponse(
             request_summary=f"User wants to travel to {destination}" + (f" from {origin}" if origin else ""),
