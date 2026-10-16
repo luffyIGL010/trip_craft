@@ -102,16 +102,26 @@ class TravelAgent:
         travelers = plan.travelers or 1
         is_round_trip = bool(return_date)
 
+        # Resolve city names to 3-letter IATA codes if applicable
+        city_to_iata = {
+            "TOKYO": "HND", "NEW YORK": "JFK", "DELHI": "DEL", "MUMBAI": "BOM",
+            "GOA": "GOI", "LONDON": "LHR", "PARIS": "CDG", "DUBAI": "DXB",
+            "SINGAPORE": "SIN", "BANGKOK": "BKK", "SYDNEY": "SYD", "SAN FRANCISCO": "SFO",
+            "LOS ANGELES": "LAX", "CHICAGO": "ORD"
+        }
+        origin_code = city_to_iata.get(plan.origin.strip().upper(), plan.origin.strip())
+        dest_code = city_to_iata.get(plan.destination.strip().upper(), plan.destination.strip())
+
         # 2. Call Transport API with both dates if round-trip
         try:
             logger.info(
-                f"Travel Agent searching flights: {plan.origin} -> {plan.destination} "
+                f"Travel Agent searching flights: {origin_code} -> {dest_code} "
                 f"(outbound={outbound_date}, return={return_date}, travelers={travelers})"
             )
             
             api_response = await self.api_client.search_flights(
-                origin=plan.origin,
-                destination=plan.destination,
+                origin=origin_code,
+                destination=dest_code,
                 outbound_date=outbound_date,
                 return_date=return_date,
                 travelers=travelers

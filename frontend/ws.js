@@ -27,9 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
         messagesContainer.appendChild(msgDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
     }
 
-    function displayPlan(plan, transportResults) {
+    function displayPlan(plan, transportResults, hotelResults) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${plan.request_summary || ''}</em></p>
@@ -172,6 +177,111 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             html += `</div>`;
         }
+
+        // Render Phase 6 Hotel Results
+        if (hotelResults) {
+            html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid #10b981;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4 style="margin:0; color:#059669;">🏨 Accommodation Options</h4>
+                    <div>
+                        ${hotelResults.is_sandbox ? '<span class="badge" style="background:#eab308; color:white; font-size:0.75rem;">Sandbox Test Data</span>' : ''}
+                    </div>
+                </div>`;
+
+            if (hotelResults.notice) {
+                html += `<div style="font-size:0.8rem; color:#854d0e; background:#fefce8; padding:6px 10px; border-radius:4px; margin:8px 0; border:1px solid #fef08a;">
+                    ℹ️ <strong>Note:</strong> ${escapeHtml(hotelResults.notice)}
+                </div>`;
+            }
+
+            if (hotelResults.status === "needs_information") {
+                html += `<div class="plan-section missing">
+                    <strong>Cannot search hotels yet. Missing:</strong>
+                    <ul>${(hotelResults.missing_information || []).map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>
+                    <p style="margin-top:6px; font-size:0.85rem;">${escapeHtml(hotelResults.message)}</p>
+                </div>`;
+            } else if (hotelResults.status === "error") {
+                html += `<div class="plan-section missing">
+                    <strong>Hotel Search Error:</strong>
+                    <p>${escapeHtml(hotelResults.message)}</p>
+                </div>`;
+            } else if (hotelResults.status === "success" && hotelResults.options && hotelResults.options.length > 0) {
+                html += `<div style="margin-top:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
+                    <div style="font-size:0.95rem;"><strong>📍 ${escapeHtml(hotelResults.destination || 'Destination')}</strong></div>
+                    <div style="font-size:0.85rem; color:#64748b;">
+                        📅 Check-in: ${escapeHtml(hotelResults.check_in || 'N/A')} | Check-out: ${escapeHtml(hotelResults.check_out || 'N/A')} | 👥 Adults: ${hotelResults.adults || 2}
+                    </div>
+                </div>`;
+
+                html += `<div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">`;
+
+                hotelResults.options.forEach((h, idx) => {
+                    const hotelName = escapeHtml(h.name || 'Unnamed Property');
+                    const platformName = escapeHtml(h.platform ? h.platform.toUpperCase() : 'Hotel');
+                    const propType = escapeHtml(h.property_type || 'hotel');
+                    const address = escapeHtml(h.address || h.city || '');
+                    
+                    let ratingText = '';
+                    if (h.guest_rating) {
+                        const scale = h.rating_scale || 5;
+                        const reviews = h.review_count ? ` (${h.review_count} reviews)` : '';
+                        ratingText = `⭐ ${h.guest_rating}/${scale}${reviews}`;
+                    } else if (h.star_rating) {
+                        ratingText = `⭐ ${h.star_rating} star hotel`;
+                    }
+
+                    let priceHtml = '';
+                    if (h.nightly_price) {
+                        const cur = escapeHtml(h.currency || 'EUR');
+                        const totalStr = h.total_price ? ` • <strong>${cur} ${h.total_price.toLocaleString()}</strong> total` : '';
+                        const nightsStr = h.nights ? ` (${h.nights} nights)` : '';
+                        priceHtml = `<span style="color:#059669; font-weight:700; font-size:1.05rem;">${cur} ${h.nightly_price.toLocaleString()}</span> <span style="font-size:0.75rem; color:#64748b;">/night${totalStr}${nightsStr}</span>`;
+                    } else if (h.total_price) {
+                        const cur = escapeHtml(h.currency || 'EUR');
+                        priceHtml = `<span style="color:#059669; font-weight:700; font-size:1.05rem;">${cur} ${h.total_price.toLocaleString()}</span> <span style="font-size:0.75rem; color:#64748b;">total</span>`;
+                    } else {
+                        priceHtml = `<span style="font-size:0.85rem; color:#64748b;">Price on request</span>`;
+                    }
+
+                    const amenitiesHtml = (h.amenities && h.amenities.length > 0)
+                        ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">
+                            ${h.amenities.slice(0, 6).map(a => `<span style="background:#e0f2fe; color:#0369a1; font-size:0.75rem; padding:2px 6px; border-radius:3px;">${escapeHtml(a.replace(/_/g, ' '))}</span>`).join('')}
+                           </div>`
+                        : '';
+
+                    let urlHtml = '';
+                    if (h.url && (h.url.startsWith('https://') || h.url.startsWith('http://'))) {
+                        const safeUrl = encodeURI(h.url);
+                        urlHtml = `<div style="margin-top:6px;">
+                            <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="font-size:0.8rem; color:var(--primary-color); text-decoration:none;">🔗 View on ${platformName} →</a>
+                        </div>`;
+                    }
+
+                    html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+                            <div>
+                                <strong style="color:#0f172a; font-size:0.95rem;">Option ${idx + 1}: ${hotelName}</strong>
+                                <span style="font-size:0.75rem; background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:3px; margin-left:6px; text-transform:capitalize;">${platformName} • ${propType}</span>
+                            </div>
+                            <div style="text-align:right;">
+                                ${priceHtml}
+                            </div>
+                        </div>
+                        <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
+                            ${address ? `<div>📍 ${address}</div>` : ''}
+                            ${ratingText ? `<div style="color:#b45309; font-weight:500;">${ratingText}</div>` : ''}
+                            ${amenitiesHtml}
+                            ${urlHtml}
+                        </div>
+                    </div>`;
+                });
+
+                html += `</div>`;
+            } else {
+                html += `<p style="font-size:0.9rem; color:#64748b;">No accommodation options found.</p>`;
+            }
+            html += `</div>`;
+        }
         
         const msgDiv = document.createElement('div');
         msgDiv.style.marginBottom = '10px';
@@ -209,9 +319,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         appendMessage('🤖 Master Agent', '<em>Analyzing your request...</em>');
                     } else if (data.agent === 'travel_agent' && data.status === 'searching_transport') {
                         appendMessage('✈️ Travel Agent', '<em>Searching for the best transport options...</em>');
+                    } else if (data.agent === 'travel_agent' && data.status === 'completed') {
+                        appendMessage('✈️ Travel Agent', '<em>Flight search completed.</em>');
+                    } else if (data.agent === 'hotel_agent' && data.status === 'preparing') {
+                        appendMessage('🏨 Hotel Agent', '<em>Preparing your hotel search...</em>');
+                    } else if (data.agent === 'hotel_agent' && data.status === 'searching_hotels') {
+                        appendMessage('🏨 Hotel Agent', '<em>Searching accommodation options...</em>');
+                    } else if (data.agent === 'hotel_agent' && data.status === 'completed') {
+                        appendMessage('🏨 Hotel Agent', '<em>Hotel search completed.</em>');
                     }
                 } else if (data.type === 'plan') {
-                    displayPlan(data.data.plan, data.data.transport_results);
+                    displayPlan(data.data.plan, data.data.transport_results, data.data.hotel_results);
                 } else {
                     appendMessage('Server', event.data);
                 }

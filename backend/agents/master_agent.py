@@ -3,6 +3,7 @@ import json
 import logging
 from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
+from .hotel_agent import HotelAgent
 
 logger = logging.getLogger(__name__)
 
@@ -11,15 +12,15 @@ SYSTEM_PROMPT = """You are a Master Travel Agent Orchestrator. Your ONLY job is 
 
 You must extract the following from the user's message:
 - request_summary: A brief one-line summary of the user's request.
-- destination: The travel destination (use uppercase 3-letter IATA airport code if possible, or null if not provided).
-- origin: Where they are traveling from (use uppercase 3-letter IATA airport code if possible, or null if not provided).
-- dates: An object with "start" and "end" date strings (or null if not provided). If possible, guess dates format as YYYY-MM-DD for the near future.
+- destination: The travel destination (city name or uppercase 3-letter IATA airport code, or null if not provided).
+- origin: Where they are traveling from (uppercase 3-letter IATA airport code or city name, or null if not provided).
+- dates: An object with "start" and "end" date strings (or null if not provided). Guess dates format as YYYY-MM-DD for the near future if specified (e.g., November 10 to November 17, 2026 -> start: "2026-11-10", end: "2026-11-17").
 - duration_days: Number of days for the trip (or null if not provided).
-- travelers: Number of travelers (or null if not provided).
+- travelers: Number of travelers/adults (or null if not provided).
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
-- tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather".
-- missing_information: A list of important missing details the user did not provide (e.g. "origin", "budget", "travel dates or duration", "number of travelers").
+- tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip.
+- missing_information: A list of important missing details the user did not provide (e.g. "origin", "budget", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels.
 
 Rules:
 1. Do NOT invent information the user did not provide. Use null for unknown fields.
@@ -45,6 +46,7 @@ class MasterAgent:
             logger.warning("No GROQ_API_KEY found in environment. MasterAgent running in mock mode.")
             
         self.travel_agent = TravelAgent()
+        self.hotel_agent = HotelAgent()
 
     async def process_request(self, user_message: str, status_callback=None) -> dict:
         """Main entry point: analyze a user's travel request and return a structured plan with delegated results."""
@@ -63,7 +65,8 @@ class MasterAgent:
             
         response_data = {
             "plan": plan.model_dump(),
-            "transport_results": None
+            "transport_results": None,
+            "hotel_results": None
         }
         
         # Phase 5: Delegate to Travel Agent if "find_transport" is a task
@@ -76,6 +79,18 @@ class MasterAgent:
             
             if status_callback:
                 await status_callback("travel_agent", "completed")
+
+        # Phase 6: Delegate to Hotel Agent if "find_hotel" or "find_hotels" is a task
+        if "find_hotel" in plan.tasks or "find_hotels" in plan.tasks or any("hotel" in t for t in plan.tasks):
+            if status_callback:
+                await status_callback("hotel_agent", "preparing")
+                await status_callback("hotel_agent", "searching_hotels")
+
+            hotel_result = await self.hotel_agent.execute(plan)
+            response_data["hotel_results"] = hotel_result.model_dump()
+
+            if status_callback:
+                await status_callback("hotel_agent", "completed")
                 
         return response_data
 
@@ -178,19 +193,33 @@ class MasterAgent:
         elif "budget" in msg:
             budget_amount = None  # mentioned but no number
 
+        # Determine tasks based on user intent
+        is_hotel_intent = "hotel" in msg or "hotels" in msg or "stay" in msg or "accommodation" in msg
+        is_flight_intent = "flight" in msg or "flights" in msg or "fly" in msg or "transport" in msg
+        is_general_trip = "plan a trip" in msg or "trip to" in msg or "plan a 5 day" in msg or "plan a 7" in msg
+
+        tasks = []
+        if is_flight_intent or (is_general_trip and not is_hotel_intent):
+            tasks.append("find_transport")
+        if is_hotel_intent or (is_general_trip and not is_flight_intent):
+            tasks.append("find_hotel")
+        if is_flight_intent and is_hotel_intent:
+            tasks = ["find_transport", "find_hotel"]
+        if not tasks:
+            tasks = ["find_transport", "find_hotel"]
+
         # Determine missing info
         missing = []
-        if not origin:
+        if "find_transport" in tasks and not origin:
             missing.append("origin")
-        if not duration and not start_date:
-            missing.append("travel dates or duration")
+        if not start_date:
+            missing.append("check_in_date" if is_hotel_intent and not is_flight_intent else "travel dates or duration")
+        if is_hotel_intent and not end_date:
+            missing.append("check_out_date")
         if not travelers:
             missing.append("number of travelers")
-        if budget_amount is None:
+        if budget_amount is None and not is_hotel_intent:
             missing.append("budget")
-
-        # Determine tasks
-        tasks = ["find_transport", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather"]
 
         return MasterAgentResponse(
             request_summary=f"User wants to travel to {destination}" + (f" from {origin}" if origin else ""),
