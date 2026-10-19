@@ -91,11 +91,20 @@ class TransportAPIClient:
                     "travelers": travelers or 1
                 }
         except httpx.HTTPStatusError as e:
-            logger.error(f"Transport API HTTP Error: {e.response.status_code} - {e.response.text}")
-            raise Exception("Transport search is temporarily unavailable (API Error).")
+            err_detail = "API Error"
+            try:
+                err_json = e.response.json()
+                if "error" in err_json:
+                    err_detail = err_json["error"]
+                elif "message" in err_json:
+                    err_detail = err_json["message"]
+            except Exception:
+                err_detail = e.response.text[:200]
+            logger.error(f"Transport API HTTP Error {e.response.status_code}: {err_detail}")
+            raise Exception(f"Transport search error: {err_detail}")
         except Exception as e:
-            logger.error(f"Transport API Error: {e}")
-            raise Exception("Transport search is temporarily unavailable.")
+            logger.error(f"Transport API Error: {e}", exc_info=True)
+            raise Exception(f"Transport search unavailable: {str(e)}")
 
     def _mock_response(self, origin, destination, outbound_date, return_date=None, travelers=1):
         # Deterministic mock response for testing and fallback

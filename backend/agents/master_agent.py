@@ -17,7 +17,7 @@ You must extract the following from the user's message:
 - destination: The travel destination (city name or uppercase 3-letter IATA airport code, or null if not provided).
 - origin: Where they are traveling from (uppercase 3-letter IATA airport code, city name, or state/region name, or null if not provided).
 - dates: An object with "start" and "end" date strings (or null if not provided). Guess dates format as YYYY-MM-DD for the near future if specified (e.g., November 10 to November 17, 2026 -> start: "2026-11-10", end: "2026-11-17"; 27 Dec to 31 Dec -> start: "2026-12-27", end: "2026-12-31").
-- duration_days: Number of days/nights for the trip, calculated as the difference between end and start dates (or null if not provided).
+- duration_days: Number of calendar days for the trip, calculated as inclusive calendar days: difference between end and start dates plus 1 (e.g. 2026-12-27 to 2026-12-31 is 5 calendar days; or null if dates not provided).
 - travelers: Number of travelers/adults (or null if not provided).
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
@@ -121,14 +121,14 @@ class MasterAgent:
             dates_data = data.get("dates") or {}
             budget_data = data.get("budget") or {}
 
-            # Calculate duration_days accurately if start and end dates are provided
+            # Calculate duration_days as calendar days (e.g. Dec 27 to Dec 31 = 5 calendar days)
             duration_days = data.get("duration_days")
             if dates_data.get("start") and dates_data.get("end"):
                 try:
                     d_s = datetime.strptime(dates_data["start"], "%Y-%m-%d").date()
                     d_e = datetime.strptime(dates_data["end"], "%Y-%m-%d").date()
-                    if d_e > d_s:
-                        duration_days = (d_e - d_s).days
+                    if d_e >= d_s:
+                        duration_days = (d_e - d_s).days + 1
                 except Exception:
                     pass
 
@@ -206,11 +206,11 @@ class MasterAgent:
             elif "jfk" in msg or "new york" in msg:
                 origin = "JFK"
 
-        # 2. Date extraction
+        # 2. Date extraction - preserving explicitly supplied years
         start_date = None
         end_date = None
 
-        # Check ISO format
+        # Check ISO format YYYY-MM-DD
         iso_dates = re.findall(r'\b(\d{4}-\d{2}-\d{2})\b', msg)
         if len(iso_dates) >= 2:
             start_date, end_date = iso_dates[0], iso_dates[1]
@@ -223,31 +223,37 @@ class MasterAgent:
             }
             month_rx = '|'.join(months.keys())
 
-            # e.g. '27 dec to 31 dec'
-            m1 = re.search(rf'(\d{{1,2}})\s*({month_rx})\b.*?(?:to|-)\s*(\d{{1,2}})\s*({month_rx})\b', msg)
-            if m1:
-                d1, mo1, d2, mo2 = m1.groups()
-                start_date = f"2026-{months[mo1]:02d}-{int(d1):02d}"
-                end_date = f"2026-{months[mo2]:02d}-{int(d2):02d}"
+            # Pattern A: Month DD, YYYY to Month DD, YYYY
+            # (e.g. 'January 10, 2027 to January 14, 2027' or 'December 27, 2026, to December 31, 2026')
+            pa = rf'({month_rx})\s*(\d{{1,2}})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{{4}}))?\s*,?\s*(?:to|-)\s*({month_rx})\s*(\d{{1,2}})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{{4}}))?'
+            ma = re.search(pa, msg, re.I)
+            if ma:
+                m1, d1, y1, m2, d2, y2 = ma.groups()
+                year1 = int(y1) if y1 else (int(y2) if y2 else datetime.now().year)
+                year2 = int(y2) if y2 else year1
+                start_date = f"{year1:04d}-{months[m1.lower()]:02d}-{int(d1):02d}"
+                end_date = f"{year2:04d}-{months[m2.lower()]:02d}-{int(d2):02d}"
             else:
-                # e.g. 'november 10 to november 17' or 'december 27 to december 31'
-                m2 = re.search(rf'({month_rx})\s*(\d{{1,2}})\b.*?(?:to|-)\s*(?:({month_rx})\s*)?(\d{{1,2}})\b', msg)
-                if m2:
-                    mo1, d1, mo2, d2 = m2.groups()
-                    mo2 = mo2 or mo1
-                    start_date = f"2026-{months[mo1]:02d}-{int(d1):02d}"
-                    end_date = f"2026-{months[mo2]:02d}-{int(d2):02d}"
+                # Pattern B: DD Month YYYY to DD Month YYYY (e.g. '27 Dec to 31 Dec' or '10 January 2027 to 14 January 2027')
+                pb = rf'(\d{{1,2}})(?:st|nd|rd|th)?\s*({month_rx})(?:\s*,?\s*(\d{{4}}))?\s*,?\s*(?:to|-)\s*(\d{{1,2}})(?:st|nd|rd|th)?\s*({month_rx})(?:\s*,?\s*(\d{{4}}))?'
+                mb = re.search(pb, msg, re.I)
+                if mb:
+                    d1, m1, y1, d2, m2, y2 = mb.groups()
+                    year1 = int(y1) if y1 else (int(y2) if y2 else datetime.now().year)
+                    year2 = int(y2) if y2 else year1
+                    start_date = f"{year1:04d}-{months[m1.lower()]:02d}-{int(d1):02d}"
+                    end_date = f"{year2:04d}-{months[m2.lower()]:02d}-{int(d2):02d}"
 
-        # Calculate duration in days/nights
+        # Calculate duration in calendar days (e.g. Dec 27 to Dec 31 = 5 calendar days; Jan 10 to Jan 14 = 5 calendar days)
         duration = None
         if start_date and end_date:
             try:
                 d_s = datetime.strptime(start_date, "%Y-%m-%d").date()
                 d_e = datetime.strptime(end_date, "%Y-%m-%d").date()
-                if d_e > d_s:
-                    duration = (d_e - d_s).days
+                if d_e >= d_s:
+                    duration = (d_e - d_s).days + 1
             except Exception:
-                duration = 7
+                duration = 5
         else:
             for i in range(1, 31):
                 if f"{i} day" in msg:

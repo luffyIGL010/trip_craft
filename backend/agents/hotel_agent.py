@@ -264,6 +264,19 @@ class HotelAgent:
                     is_sandbox=False
                 ))
 
+            # Select the best 5-8 useful options based on available API data (price, rating, reviews)
+            # Prioritize options that have prices or good ratings/reviews while keeping price-on-request valid
+            def sort_key(opt: HotelOption):
+                has_price = 1 if (opt.nightly_price is not None or opt.total_price is not None) else 0
+                has_rating = 1 if opt.guest_rating is not None else 0
+                rating = opt.guest_rating or 0.0
+                reviews = opt.review_count or 0
+                return (has_price, has_rating, rating, reviews)
+
+            options.sort(key=sort_key, reverse=True)
+            # Limit to top 6 (within the requested 5-8 range)
+            selected_options = options[:6]
+
             return HotelResult(
                 status="success",
                 destination=location,
@@ -271,8 +284,8 @@ class HotelAgent:
                 check_out=check_out,
                 nights=stay_nights,
                 adults=adults,
-                total_found=len(options),
-                options=options,
+                total_found=len(selected_options),
+                options=selected_options,
                 is_sandbox=False,
                 notice=None
             )
