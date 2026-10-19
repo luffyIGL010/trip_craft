@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
-    function displayPlan(plan, transportResults, hotelResults) {
+    function displayPlan(plan, transportResults, hotelResults, combinedTripCost) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${plan.request_summary || ''}</em></p>
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div><strong>📍 Destination:</strong> ${plan.destination || '<span class="text-muted">Not specified</span>'}</div>
                 <div><strong>🏠 Origin:</strong> ${plan.origin || '<span class="text-muted">Not specified</span>'}</div>
                 <div><strong>📅 Departure:</strong> ${plan.dates && plan.dates.start ? plan.dates.start : '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>📅 Duration:</strong> ${plan.duration_days ? plan.duration_days + ' days' : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>📅 Duration:</strong> ${plan.duration_days ? plan.duration_days + ' calendar days' : '<span class="text-muted">Not specified</span>'}</div>
                 <div><strong>👥 Travelers:</strong> ${plan.travelers || '<span class="text-muted">Not specified</span>'}</div>
                 <div><strong>💰 Budget:</strong> ${plan.budget && plan.budget.amount ? '₹' + plan.budget.amount.toLocaleString() : '<span class="text-muted">Not specified</span>'}</div>
             </div>`;
@@ -293,6 +293,53 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             html += `</div>`;
         }
+
+        // Render Combined Estimated Trip Cost Section
+        if (combinedTripCost) {
+            html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid #8b5cf6;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4 style="margin:0; color:#7c3aed;">💰 Combined Estimated Trip Cost</h4>
+                    <span class="badge" style="background:#7c3aed; color:white; font-size:0.75rem;">Flights + Accommodation</span>
+                </div>`;
+
+            if (combinedTripCost.status === "available" && combinedTripCost.estimates && combinedTripCost.estimates.length > 0) {
+                html += `<div style="font-size:0.85rem; color:#475569; margin: 8px 0 12px 0;">
+                    Showing combined cost estimates for top flight & hotel combinations:
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px;">`;
+
+                combinedTripCost.estimates.forEach((est, idx) => {
+                    if (est.status === "available") {
+                        html += `<div style="border:1px solid #ddd6fe; border-radius:6px; padding:12px; background:#f5f3ff;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <strong style="color:#5b21b6; font-size:0.95rem;">Combination ${idx + 1}</strong>
+                                <span style="font-size:1.15rem; font-weight:700; color:#6d28d9;">${escapeHtml(est.formatted_total)}</span>
+                            </div>
+                            <div style="font-size:0.85rem; color:#4c1d95; line-height:1.5;">
+                                <div>✈️ <strong>Flight:</strong> ${escapeHtml(est.flight_option)} • ₹${est.flight_price.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.flight_scope)})</span></div>
+                                <div>🏨 <strong>Hotel:</strong> ${escapeHtml(est.hotel_option)} • ₹${est.hotel_total.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.hotel_scope)})</span></div>
+                            </div>
+                            <div style="margin-top:8px; font-size:0.75rem; color:#6b7280; border-top:1px dashed #c4b5fd; padding-top:6px;">
+                                ℹ️ <em>${escapeHtml(est.exclusions)}</em>
+                            </div>
+                        </div>`;
+                    } else {
+                        html += `<div style="border:1px solid #fed7aa; border-radius:6px; padding:10px; background:#fff7ed; font-size:0.85rem; color:#9a3412;">
+                            <strong>${escapeHtml(est.flight_option || 'Flight')} + ${escapeHtml(est.hotel_option || 'Hotel')}:</strong>
+                            <span>Combined cost unavailable (reliable price unavailable for one or both options)</span>
+                        </div>`;
+                    }
+                });
+
+                html += `</div>`;
+            } else {
+                html += `<div style="margin-top:10px; padding:10px 14px; background:#fff7ed; border-left:4px solid #f97316; border-radius:4px; font-size:0.9rem; color:#9a3412;">
+                    ⚠️ <strong>Combined cost unavailable:</strong> Reliable price information could not be determined for both flight and hotel components.
+                </div>`;
+            }
+
+            html += `</div>`;
+        }
         
         const msgDiv = document.createElement('div');
         msgDiv.style.marginBottom = '10px';
@@ -340,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         appendMessage('🏨 Hotel Agent', '<em>Hotel search completed.</em>');
                     }
                 } else if (data.type === 'plan') {
-                    displayPlan(data.data.plan, data.data.transport_results, data.data.hotel_results);
+                    displayPlan(data.data.plan, data.data.transport_results, data.data.hotel_results, data.data.combined_trip_cost);
                 } else {
                     appendMessage('Server', event.data);
                 }

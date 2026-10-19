@@ -93,7 +93,61 @@ class MasterAgent:
 
             if status_callback:
                 await status_callback("hotel_agent", "completed")
-                
+
+        # Calculate combined estimated trip cost for flight + hotel pairs
+        combined_estimates = []
+        tr = response_data.get("transport_results")
+        hr = response_data.get("hotel_results")
+
+        if tr and hr and tr.get("status") == "success" and hr.get("status") == "success":
+            flight_opts = tr.get("options") or []
+            hotel_opts = hr.get("options") or []
+            travelers = plan.travelers or 1
+            nights = hr.get("nights") or 0
+
+            # Generate useful comparisons for the best flight options and hotel options
+            for f_idx, fl in enumerate(flight_opts[:3]):
+                f_price = fl.get("price")
+                f_provider = fl.get("provider") or "Flight"
+                f_type = fl.get("trip_type") or "flight"
+
+                for h_idx, ht in enumerate(hotel_opts[:3]):
+                    h_total = ht.get("total_price")
+                    h_nightly = ht.get("nightly_price")
+                    h_name = ht.get("name") or "Hotel"
+
+                    if f_price is not None and f_price > 0 and h_total is not None and h_total > 0:
+                        comb_total = float(f_price + h_total)
+                        combined_estimates.append({
+                            "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                            "flight_price": float(f_price),
+                            "flight_scope": f"Total for {travelers} traveler{'s' if travelers > 1 else ''} ({'round trip' if f_type == 'round_trip' else 'one way'})",
+                            "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                            "hotel_total": float(h_total),
+                            "hotel_nightly": float(h_nightly) if h_nightly else None,
+                            "hotel_scope": f"Total for {nights} night{'s' if nights != 1 else ''}",
+                            "combined_total": comb_total,
+                            "currency": "INR",
+                            "formatted_total": f"₹{comb_total:,.0f}",
+                            "exclusions": "Excludes local transfers, meals, attraction entry fees, and visa/personal expenses.",
+                            "status": "available"
+                        })
+                    else:
+                        combined_estimates.append({
+                            "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                            "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                            "status": "unavailable",
+                            "message": "Combined cost unavailable (reliable price unavailable for one or both options)"
+                        })
+
+        response_data["combined_trip_cost"] = {
+            "status": "available" if any(c.get("status") == "available" for c in combined_estimates) else "unavailable",
+            "estimates": combined_estimates,
+            "travelers": plan.travelers or 1,
+            "hotel_nights": hr.get("nights") if hr else None,
+            "trip_duration_days": plan.duration_days
+        }
+
         return response_data
 
     def _call_llm(self, user_message: str) -> MasterAgentResponse:

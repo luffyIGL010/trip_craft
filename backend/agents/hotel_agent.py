@@ -195,13 +195,6 @@ class HotelAgent:
                 elif not isinstance(reviews_count, int):
                     reviews_count = None
 
-                # Prices: safe extraction
-                rate_per_night_raw = prop.get("rate_per_night")
-                nightly_price = extract_price_value(rate_per_night_raw)
-
-                total_rate_raw = prop.get("total_rate")
-                total_price = extract_price_value(total_rate_raw)
-
                 # Amenities
                 raw_amenities = prop.get("amenities") or []
                 amenities = [str(a) for a in raw_amenities if a] if isinstance(raw_amenities, list) else []
@@ -234,12 +227,37 @@ class HotelAgent:
                     if source_name:
                         platform = source_name
 
-                # Price Label
+                # Prices: safe extraction
+                rate_per_night_raw = prop.get("rate_per_night")
+                nightly_price = extract_price_value(rate_per_night_raw)
+
+                total_rate_raw = prop.get("total_rate")
+                api_total = extract_price_value(total_rate_raw)
+
+                # Total stay price verification
+                # If API provided a total_rate, use it. If not, and nightly_price and stay_nights are available, calculate base total.
+                total_price = api_total
+                price_note = None
+
+                if nightly_price and stay_nights:
+                    base_calc = nightly_price * stay_nights
+                    if api_total is not None:
+                        diff = api_total - base_calc
+                        if abs(diff) > 2.0:
+                            # Difference is due to taxes, service fees, or seasonal pricing included in the total
+                            price_note = f"Includes taxes/fees (diff: ₹{diff:,.0f} from base ₹{base_calc:,.0f})"
+                    else:
+                        total_price = base_calc
+
+                # Price Label consistent with currency
                 price_label = None
                 if total_price and stay_nights:
-                    price_label = f"₹{total_price:,.0f} total ({stay_nights} nights)"
+                    note_str = f" • {price_note}" if price_note else ""
+                    price_label = f"₹{total_price:,.0f} total for {stay_nights} nights{note_str}"
                 elif nightly_price:
                     price_label = f"₹{nightly_price:,.0f} /night"
+                else:
+                    price_label = "Price on request"
 
                 options.append(HotelOption(
                     name=name,
