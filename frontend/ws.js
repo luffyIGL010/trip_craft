@@ -10,9 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusText = document.getElementById('wsStatusText');
     const messagesContainer = document.getElementById('wsMessages');
     
+    const statusDot = document.getElementById('wsStatusDot');
+    
     function updateStatus(status) {
         statusText.textContent = status;
-        statusText.className = 'badge ' + status.toLowerCase().replace('...', '');
+        const normalized = status.toLowerCase().replace('...', '');
+        statusText.className = 'badge ' + normalized;
+        if (statusDot) {
+            statusDot.className = 'status-dot ' + normalized;
+        }
         
         const isConnected = status === 'Connected';
         connectBtn.disabled = isConnected || status === 'Connecting...';
@@ -23,8 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function appendMessage(sender, text) {
         const msgDiv = document.createElement('div');
-        msgDiv.style.marginBottom = '5px';
-        msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+        let bubbleClass = 'agent';
+        if (sender === 'You') {
+            bubbleClass = 'user';
+        } else if (sender === 'System') {
+            bubbleClass = 'system';
+        }
+        msgDiv.className = `chat-bubble ${bubbleClass}`;
+        
+        if (sender === 'You') {
+            msgDiv.innerHTML = text;
+        } else if (sender === 'System') {
+            msgDiv.innerHTML = text;
+        } else {
+            msgDiv.innerHTML = `<strong style="display:block; margin-bottom:2px; font-size:0.85rem; color:#475569;">${sender}</strong>${text}`;
+        }
         messagesContainer.appendChild(msgDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
@@ -308,8 +327,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div style="display:flex; flex-direction:column; gap:10px;">`;
 
+                // Collect combos for post-render PayPal button injection
+                const checkoutCombos = [];
+
                 combinedTripCost.estimates.forEach((est, idx) => {
                     if (est.status === "available") {
+                        // Embed a sentinel div with a data-combo-idx for PayPal button mounting
+                        const comboIdx = checkoutCombos.length;
+                        checkoutCombos.push({
+                            flight_option: est.flight_option,
+                            hotel_option:  est.hotel_option,
+                            flight_price:  est.flight_price,
+                            hotel_price:   est.hotel_total,
+                            nights:        combinedTripCost.hotel_nights || 0,
+                            travelers:     combinedTripCost.travelers || 1,
+                            destination:   plan ? (plan.destination || '') : ''
+                        });
                         html += `<div style="border:1px solid #ddd6fe; border-radius:6px; padding:12px; background:#f5f3ff;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <strong style="color:#5b21b6; font-size:0.95rem;">Combination ${idx + 1}</strong>
@@ -324,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div><strong>Excludes:</strong> ${escapeHtml(est.exclusions)}</div>
                                 <div style="margin-top:4px; color:#7c3aed; font-style:italic;">⚠️ ${escapeHtml(est.disclaimer || 'Search estimate only; not a guaranteed booking price.')}</div>
                             </div>
+                            <div class="pp-btn-mount" data-combo-idx="${comboIdx}" style="margin-top:4px;"></div>
                         </div>`;
                     } else {
                         html += `<div style="border:1px solid #fed7aa; border-radius:6px; padding:10px; background:#fff7ed; font-size:0.85rem; color:#9a3412;">
@@ -348,6 +382,30 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.innerHTML = html;
         messagesContainer.appendChild(msgDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        // Mount PayPal checkout buttons into sentinel elements after DOM is attached
+        if (typeof window.renderCheckoutButton === 'function' && combinedTripCost && combinedTripCost.estimates) {
+            const checkoutCombos = [];
+            (combinedTripCost.estimates || []).forEach(est => {
+                if (est.status === 'available') {
+                    checkoutCombos.push({
+                        flight_option: est.flight_option,
+                        hotel_option:  est.hotel_option,
+                        flight_price:  est.flight_price,
+                        hotel_price:   est.hotel_total,
+                        nights:        combinedTripCost.hotel_nights || 0,
+                        travelers:     combinedTripCost.travelers || 1,
+                        destination:   plan ? (plan.destination || '') : ''
+                    });
+                }
+            });
+            msgDiv.querySelectorAll('.pp-btn-mount').forEach(mount => {
+                const idx = parseInt(mount.dataset.comboIdx, 10);
+                if (!isNaN(idx) && checkoutCombos[idx]) {
+                    window.renderCheckoutButton(mount, checkoutCombos[idx]);
+                }
+            });
+        }
     }
 
     connectBtn.addEventListener('click', () => {
@@ -434,4 +492,27 @@ document.addEventListener('DOMContentLoaded', () => {
     input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
+
+    // Dynamic Quick Prompt Chips handler
+    const quickPromptsContainer = document.getElementById('quickPrompts');
+    if (quickPromptsContainer) {
+        quickPromptsContainer.addEventListener('click', (e) => {
+            const chip = e.target.closest('.quick-chip');
+            if (!chip) return;
+            const prompt = chip.getAttribute('data-prompt');
+            if (prompt) {
+                input.value = prompt;
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    // Automatically trigger connection if disconnected
+                    connectBtn.click();
+                    // Wait briefly for connection then focus input
+                    setTimeout(() => {
+                        input.focus();
+                    }, 500);
+                } else {
+                    sendMessage();
+                }
+            }
+        });
+    }
 });

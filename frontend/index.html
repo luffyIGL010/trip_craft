@@ -9,52 +9,76 @@
 <body>
     <div class="container">
         <header>
+            <div class="header-badge">✈️ Intelligent Multi-Agent Travel Planner</div>
             <h1>TravelAgent</h1>
-            <p>Your AI Travel Assistant</p>
+            <p>Real-time flights, verified hotels & smart trip estimates</p>
         </header>
 
         <main>
             <!-- Protected Area (Shown only when authenticated) -->
             <div id="protectedArea" class="hidden">
+                <!-- User Bar Card -->
                 <div class="card">
-                    <h2 id="welcomeMessage">Welcome, ...</h2>
-                    
-                    <div class="actions">
-                        <button id="checkConnectionBtn">Check Backend</button>
-                        <button id="logoutBtn" class="secondary">Logout</button>
+                    <div class="user-bar">
+                        <div class="user-info">
+                            <div class="user-avatar" id="userAvatar">U</div>
+                            <div>
+                                <h2 id="welcomeMessage" style="margin:0;">Welcome, Traveler</h2>
+                                <span style="font-size:0.8rem; color:var(--text-muted);">Verified Session</span>
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <button id="checkConnectionBtn" class="secondary" title="Verify server health">⚡ Backend Status</button>
+                            <button id="logoutBtn" class="danger" title="Sign out">Logout</button>
+                        </div>
                     </div>
                     
                     <div id="statusArea" class="status-box hidden"></div>
                 </div>
 
                 <!-- Master Agent Chat UI -->
-                <div class="card mt-4">
-                    <h2>Plan Your Trip</h2>
-                    <p class="subtitle">Describe your travel plans and the Master Agent will create a structured plan.</p>
+                <div class="card">
+                    <div class="ws-controls-wrapper">
+                        <div>
+                            <h2>Plan Your Trip</h2>
+                            <p class="subtitle" style="margin:0;">Describe your ideal destination, dates, and budget.</p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div class="ws-status-indicator">
+                                <span id="wsStatusDot" class="status-dot disconnected"></span>
+                                <span id="wsStatusText" class="badge disconnected">Disconnected</span>
+                            </div>
+                            <div class="ws-controls">
+                                <button id="wsConnectBtn">Connect</button>
+                                <button id="wsDisconnectBtn" class="secondary" disabled>Disconnect</button>
+                            </div>
+                        </div>
+                    </div>
 
-                    <div class="ws-controls">
-                        <button id="wsConnectBtn">Connect</button>
-                        <button id="wsDisconnectBtn" class="secondary" disabled>Disconnect</button>
+                    <!-- Dynamic Quick Prompt Chips -->
+                    <div class="quick-prompts" id="quickPrompts">
+                        <span class="quick-chip" data-prompt="Plan an international trip to Singapore from Bengaluru from May 5, 2027 to May 12, 2027 for 2 adults">🇸🇬 Singapore from BLR (May 2027)</span>
+                        <span class="quick-chip" data-prompt="Plan a trip to Goa from Delhi from January 10, 2027 to January 14, 2027 for 2 adults">🏖️ Goa from Delhi (Jan 2027)</span>
+                        <span class="quick-chip" data-prompt="Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults">🏙️ Dubai from Delhi (Mar 2027)</span>
+                        <span class="quick-chip" data-prompt="Plan a trip to Mumbai from Dehradun from December 27, 2026 to December 31, 2026 for 4 adults">🌊 Mumbai from Dehradun (Dec 2026)</span>
                     </div>
-                    
-                    <div class="ws-status">
-                        Status: <span id="wsStatusText" class="badge disconnected">Disconnected</span>
-                    </div>
-                    
+
                     <div class="ws-chat-area">
                         <div id="wsMessages" class="messages-container"></div>
                         <div class="ws-input-area">
-                            <input type="text" id="wsInput" placeholder="e.g. Plan a 5 day trip to Goa from Delhi for 2 people under ₹50,000" disabled>
-                            <button id="wsSendBtn" disabled>Send</button>
+                            <input type="text" id="wsInput" placeholder="Describe your trip (e.g. Goa from Delhi Jan 10-14, 2027 for 2 adults)..." disabled>
+                            <button id="wsSendBtn" disabled>
+                                <span>Send</span> ➔
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Loading State -->
-            <div id="loadingArea" class="card">
-                <h2>Loading...</h2>
-                <p>Verifying authentication state.</p>
+            <div id="loadingArea" class="card" style="text-align:center; padding:3rem 1.5rem;">
+                <h2>Authenticating...</h2>
+                <p style="color:var(--text-muted); margin-top:8px;">Verifying your secure session, please wait.</p>
             </div>
         </main>
     </div>

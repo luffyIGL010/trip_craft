@@ -105,8 +105,12 @@ async function checkAuthAndLoadProfile() {
         document.getElementById('loadingArea').classList.add('hidden');
         document.getElementById('protectedArea').classList.remove('hidden');
         
-        // Update welcome message
+        // Update welcome message and avatar initial
         document.getElementById('welcomeMessage').textContent = `Welcome, ${user.name}`;
+        const avatarEl = document.getElementById('userAvatar');
+        if (avatarEl && user.name) {
+            avatarEl.textContent = user.name.trim().charAt(0).toUpperCase();
+        }
 
     } catch (error) {
         console.error('Auth check failed:', error);
