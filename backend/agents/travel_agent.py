@@ -138,7 +138,17 @@ class TravelAgent:
 
         origin_raw = plan.origin.strip()
         dest_raw = plan.destination.strip()
-        origin_upper = origin_raw.upper()
+
+        # If origin contains a comma e.g. "Dehradun, Uttarakhand", check if first part is a specific city
+        origin_resolved_name = origin_raw
+        if "," in origin_raw:
+            parts = [p.strip() for p in origin_raw.split(",") if p.strip()]
+            for p in parts:
+                if p.upper() in CITY_TO_IATA:
+                    origin_resolved_name = p
+                    break
+
+        origin_upper = origin_resolved_name.upper()
         dest_upper = dest_raw.upper()
 
         # 2. Ambiguous origin check (e.g., Uttarakhand is a state, not an airport)

@@ -171,19 +171,24 @@ class MasterAgent:
         destination = None
         origin = None
 
-        m_to_from = re.search(r'\bto\s+([A-Za-z\s]+?)\s+from\s+([A-Za-z\s]+?)(?:\s+from|\s+for|\s+under|\s+on|\s+with|\s*$)', user_message, re.I)
+        m_to_from = re.search(r'\bto\s+([A-Za-z\s]+?)\s+from\s+([A-Za-z\s,]+?)(?:\s*,?\s*from\s+|\s*,?\s*for\s+|\s*,?\s*under\s+|\s*,?\s*on\s+|\s*,?\s*with\s+|\s*$)', user_message, re.I)
         if m_to_from:
-            destination = m_to_from.group(1).strip().title()
-            origin = m_to_from.group(2).strip().title()
+            destination = m_to_from.group(1).strip(' ,').title()
+            raw_orig = m_to_from.group(2).strip(' ,').title()
+            # If origin has comma like 'Dehradun, Uttarakhand', check first part for specific city/airport
+            parts = [p.strip() for p in raw_orig.split(',') if p.strip()]
+            origin = parts[0] if parts else raw_orig
         else:
-            m_from_to = re.search(r'\bfrom\s+([A-Za-z\s]+?)\s+to\s+([A-Za-z\s]+?)(?:\s+from|\s+for|\s+under|\s+on|\s+with|\s*$)', user_message, re.I)
+            m_from_to = re.search(r'\bfrom\s+([A-Za-z\s,]+?)\s+to\s+([A-Za-z\s]+?)(?:\s*,?\s*from\s+|\s*,?\s*for\s+|\s*,?\s*under\s+|\s*,?\s*on\s+|\s*,?\s*with\s+|\s*$)', user_message, re.I)
             if m_from_to:
-                origin = m_from_to.group(1).strip().title()
-                destination = m_from_to.group(2).strip().title()
+                raw_orig = m_from_to.group(1).strip(' ,').title()
+                parts = [p.strip() for p in raw_orig.split(',') if p.strip()]
+                origin = parts[0] if parts else raw_orig
+                destination = m_from_to.group(2).strip(' ,').title()
 
         # Keyword destination fallbacks if not extracted
         if not destination:
-            for place in ["goa", "paris", "manali", "jaipur", "mumbai", "london", "tokyo", "hnd"]:
+            for place in ["goa", "paris", "manali", "jaipur", "mumbai", "london", "tokyo", "hnd", "dehradun"]:
                 if place in msg:
                     destination = "HND" if place in ["tokyo", "hnd"] else place.title()
                     break
@@ -192,7 +197,9 @@ class MasterAgent:
 
         # Keyword origin fallbacks if not extracted
         if not origin:
-            if "delhi" in msg:
+            if "dehradun" in msg:
+                origin = "Dehradun"
+            elif "delhi" in msg:
                 origin = "Delhi"
             elif "uttarakhand" in msg:
                 origin = "Uttarakhand"
