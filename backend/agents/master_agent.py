@@ -129,7 +129,9 @@ class MasterAgent:
                             "combined_total": comb_total,
                             "currency": "INR",
                             "formatted_total": f"₹{comb_total:,.0f}",
-                            "exclusions": "Excludes local transfers, meals, attraction entry fees, and visa/personal expenses.",
+                            "inclusions": f"Round-trip airfare ({travelers} traveler{'s' if travelers > 1 else ''}) + accommodation ({nights} night{'s' if nights != 1 else ''})",
+                            "exclusions": "Excludes local transfers, meals, attraction entry fees, visa, and personal expenses.",
+                            "disclaimer": "Search estimate only. Fares and room rates are subject to real-time availability and provider confirmation; prices are not guaranteed until booked.",
                             "status": "available"
                         })
                     else:

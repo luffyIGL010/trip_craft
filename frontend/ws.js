@@ -319,8 +319,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div>✈️ <strong>Flight:</strong> ${escapeHtml(est.flight_option)} • ₹${est.flight_price.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.flight_scope)})</span></div>
                                 <div>🏨 <strong>Hotel:</strong> ${escapeHtml(est.hotel_option)} • ₹${est.hotel_total.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.hotel_scope)})</span></div>
                             </div>
-                            <div style="margin-top:8px; font-size:0.75rem; color:#6b7280; border-top:1px dashed #c4b5fd; padding-top:6px;">
-                                ℹ️ <em>${escapeHtml(est.exclusions)}</em>
+                            <div style="margin-top:8px; font-size:0.75rem; color:#6b7280; border-top:1px dashed #c4b5fd; padding-top:6px; line-height:1.4;">
+                                <div><strong>Includes:</strong> ${escapeHtml(est.inclusions || 'Flight + Hotel')}</div>
+                                <div><strong>Excludes:</strong> ${escapeHtml(est.exclusions)}</div>
+                                <div style="margin-top:4px; color:#7c3aed; font-style:italic;">⚠️ ${escapeHtml(est.disclaimer || 'Search estimate only; not a guaranteed booking price.')}</div>
                             </div>
                         </div>`;
                     } else {
