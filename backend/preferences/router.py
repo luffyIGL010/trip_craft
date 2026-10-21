@@ -55,6 +55,10 @@ class PreferenceInput(BaseModel):
         maximum = values.get("max_amount")
 
         if category == "budget":
+            if values.get("budget_basis") == "unspecified":
+                raise ValueError(
+                    "Choose whether this is a total-trip or per-traveler budget"
+                )
             if minimum is None and maximum is None:
                 raise ValueError("A minimum or maximum budget amount is required")
             if minimum is not None and maximum is not None and minimum > maximum:

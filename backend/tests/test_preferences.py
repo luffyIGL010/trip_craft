@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -98,6 +99,79 @@ class PreferenceApiTests(unittest.TestCase):
             self.client.get("/api/preferences").json()["preferences"],
             [],
         )
+
+    def test_selected_budget_basis_persists_reaches_master_and_compares(self):
+        created = self.client.post(
+            "/api/preferences",
+            json={
+                "category": "budget",
+                "min_amount": 20000,
+                "max_amount": 50000,
+                "currency": "INR",
+                "budget_basis": "total_trip",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["budget_basis"], "total_trip")
+
+        saved_preferences = self.client.get("/api/preferences").json()["preferences"]
+        self.assertEqual(saved_preferences[0]["budget_basis"], "total_trip")
+
+        async def verify_master_agent_context():
+            agent = MasterAgent()
+            agent.client = None
+            agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+                status="success",
+                trip_type="round_trip",
+                options=[
+                    TransportOption(
+                        provider="Air",
+                        departure="out",
+                        arrival="in",
+                        duration="2h",
+                        stops=0,
+                        price=10000,
+                        currency="INR",
+                        trip_type="round_trip",
+                        outbound_leg=FlightLeg(
+                            provider="Air",
+                            flight_number="AB 123",
+                            departure_airport="DEL",
+                            departure_time="2027-03-15T08:00",
+                            arrival_airport="GOI",
+                            arrival_time="2027-03-15T10:00",
+                        ),
+                    )
+                ],
+            ))
+            agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+                status="success",
+                nights=5,
+                options=[
+                    HotelOption(
+                        name="Goa stay",
+                        city="Goa",
+                        total_price=20000,
+                        currency="INR",
+                    )
+                ],
+            ))
+            return await agent.process_request(
+                "Plan a trip to Goa from Delhi from March 15, 2027 to March 20, 2027 for 2 adults",
+                saved_preferences=saved_preferences,
+            )
+
+        result = asyncio.run(verify_master_agent_context())
+        comparison = result["combined_trip_cost"]["estimates"][0][
+            "saved_budget_comparison"
+        ]
+        self.assertEqual(comparison["basis"], "total_trip")
+        self.assertEqual(comparison["status"], "within")
+        self.assertEqual(comparison["comparison_amount"], 30000)
+        self.assertTrue(any(
+            "total budget for the entire trip" in preference
+            for preference in result["plan"]["preferences"]
+        ))
         self.assertEqual(
             self.client.delete(f"/api/preferences/{preference_id}").status_code,
             404,
@@ -130,6 +204,17 @@ class PreferenceApiTests(unittest.TestCase):
             json={"category": "budget", "min_amount": 500, "max_amount": 100},
         )
         self.assertEqual(invalid.status_code, 422)
+        unspecified = self.client.post(
+            "/api/preferences",
+            json={
+                "category": "budget",
+                "min_amount": 100,
+                "max_amount": 500,
+                "currency": "INR",
+                "budget_basis": "unspecified",
+            },
+        )
+        self.assertEqual(unspecified.status_code, 422)
 
         created = self.client.post(
             "/api/preferences",
