@@ -144,6 +144,21 @@ class PreferenceApiTests(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["currency"], "INR")
         self.assertEqual(created.json()["budget_basis"], "total_trip")
+        budget_id = created.json()["id"]
+        updated_budget = self.client.put(
+            f"/api/preferences/{budget_id}",
+            json={
+                "category": "budget",
+                "min_amount": 100,
+                "max_amount": 500,
+                "currency": "INR",
+                "budget_basis": "per_person",
+            },
+        )
+        self.assertEqual(updated_budget.status_code, 200)
+        self.assertEqual(updated_budget.json()["min_amount"], 100)
+        self.assertEqual(updated_budget.json()["max_amount"], 500)
+        self.assertEqual(updated_budget.json()["budget_basis"], "per_person")
         interest = self.client.post(
             "/api/preferences",
             json={"category": "interest", "value": "history"},
@@ -405,7 +420,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(
             any(
-                "total trip, all travelers" in preference
+                "total budget for the entire trip" in preference
                 for preference in result["plan"]["preferences"]
             )
         )
