@@ -342,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 within: 'Within selected saved budget',
                                 above: 'Exceeds selected saved budget',
                                 below: 'Below selected saved budget',
-                                not_compared_basis_unspecified: 'Budget comparison unavailable: saved budget meaning is not set',
+                                not_compared_basis_unspecified: 'Budget basis needs selection before comparison',
                                 not_compared_currency_mismatch: 'Budget comparison unavailable: currencies do not match'
                             };
                             const basisLabel = budgetComparison.basis === 'per_person'

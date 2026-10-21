@@ -71,9 +71,9 @@ def preference_label(preference: TravelPreference | dict) -> str:
         else:
             value = lower or upper or value
         basis_label = {
-            "total_trip": "total trip, all travelers",
-            "per_person": "per person",
-        }.get(budget_basis, "basis unspecified")
+            "total_trip": "total budget for the entire trip",
+            "per_person": "budget per traveler",
+        }.get(budget_basis, "basis needs selection")
         return f"usual budget range ({basis_label}): {value}"
     return f"{category}: {value}"
 

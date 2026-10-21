@@ -350,8 +350,7 @@ class MasterAgent:
                             "currency": "INR",
                             "formatted_total": f"₹{comb_total:,.0f}",
                             "inclusions": (
-                                f"Provider flight itinerary price for {travelers} "
-                                f"traveler{'s' if travelers != 1 else ''} + "
+                                f"{fl.get('price_label') or 'Provider flight itinerary price'} + "
                                 f"accommodation total for {nights} night"
                                 f"{'s' if nights != 1 else ''}"
                             ),
@@ -396,8 +395,9 @@ class MasterAgent:
                             "hotel_option_id": repr(combination_id[1]),
                             "status": "unavailable",
                             "message": (
-                                "Combined cost unavailable (currency mismatch or "
-                                "reliable price unavailable for one or both options)"
+                                "Combined cost unavailable (currency mismatch, "
+                                "unverified provider trip scope, or reliable price "
+                                "unavailable for one or both options)"
                             )
                         })
 
