@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             <div style="text-align:right;">
                                 <strong style="color:var(--primary-color); font-size:1.05rem;">${opt.price === null || opt.price === undefined ? 'Price unavailable' : `₹${Number(opt.price).toLocaleString()}`}</strong>
-                                ${opt.price !== null && opt.price !== undefined ? '<span style="font-size:0.75rem; color:#64748b; display:block;">provider itinerary price</span>' : ''}
+                                ${opt.price !== null && opt.price !== undefined ? `<span style="font-size:0.75rem; color:#64748b; display:block;">${escapeHtml(opt.price_label || 'Provider price scope unspecified')}</span>` : ''}
                             </div>
                         </div>
                         <div style="font-size:0.85rem; color:#475569; line-height:1.4;">

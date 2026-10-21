@@ -271,7 +271,7 @@ class TravelAgent:
                     stops=max(0, len(flights_list) - 1),
                     price=price,
                     currency="INR",
-                    price_type="total",
+                    price_type="provider_returned",
                     price_label=option_price_label,
                     trip_type=option_trip_type,
                     outbound_leg=outbound_leg,
@@ -328,7 +328,7 @@ class TravelAgent:
                 outbound_date=outbound_date,
                 return_date=return_date,
                 travelers=travelers,
-                price_type="total",
+                price_type="provider_returned",
                 price_label=(
                     f"{price_source} prices from a search requested with "
                     f"{travelers} traveler{'s' if travelers != 1 else ''}; "

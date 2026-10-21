@@ -21,7 +21,7 @@ class TransportOption(BaseModel):
     stops: int
     price: Optional[float] = None
     currency: str = "INR"
-    price_type: str = "total"
+    price_type: str = "provider_returned"
     price_label: Optional[str] = None
     trip_type: Optional[str] = "one_way"  # "one_way" or "round_trip"
     outbound_leg: Optional[FlightLeg] = None
@@ -38,7 +38,7 @@ class TransportResult(BaseModel):
     outbound_date: Optional[str] = None
     return_date: Optional[str] = None
     travelers: Optional[int] = 1
-    price_type: str = "total"
+    price_type: str = "provider_returned"
     price_label: Optional[str] = None
     options: List[TransportOption] = []  # Outbound or bundled flight options
     return_options: List[TransportOption] = []  # Return flight options if available
