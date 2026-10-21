@@ -69,7 +69,7 @@
             }
             sdkLoading = true;
             const script = document.createElement('script');
-            script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&intent=authorize`;
+            script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&intent=capture`;
             script.onload = () => { sdkLoaded = true; sdkLoading = false; resolve(); };
             script.onerror = () => { sdkLoading = false; reject(new Error('PayPal SDK failed to load')); };
             document.head.appendChild(script);

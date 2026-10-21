@@ -63,9 +63,9 @@ class PayPalClient:
         usd_amount = round(amount_inr * _INR_TO_USD_RATE, 2)
         access_token = await self.get_access_token()
 
-        # Using AUTHORIZE intent to bypass "Things don't appear to be working"
+        # Capture funds immediately after the buyer approves the order.
         payload = {
-            "intent": "AUTHORIZE",
+            "intent": "CAPTURE",
             "purchase_units": [
                 {
                     "amount": {
@@ -97,9 +97,9 @@ class PayPalClient:
         access_token = await self.get_access_token()
 
         async with httpx.AsyncClient() as client:
-            # Use /authorize endpoint to match the AUTHORIZE intent
+            # Capture the approved order immediately, matching the CAPTURE intent.
             response = await client.post(
-                f"{self._base_url}/v2/checkout/orders/{order_id}/authorize",
+                f"{self._base_url}/v2/checkout/orders/{order_id}/capture",
                 json={},
                 headers={
                     "Authorization": f"Bearer {access_token}",
