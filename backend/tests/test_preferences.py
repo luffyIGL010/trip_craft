@@ -429,6 +429,62 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
                 for preference in result["plan"]["preferences"])
         )
 
+    async def test_per_person_budget_compares_per_traveler_and_reports_party_size(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            travelers=2,
+            trip_type="round_trip",
+            options=[
+                TransportOption(
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="2h",
+                    stops=0,
+                    price=300000,
+                    currency="INR",
+                    price_label="Provider itinerary price for search requested with 2 travelers (round trip)",
+                    trip_type="round_trip",
+                    outbound_leg=FlightLeg(
+                        provider="Air",
+                        flight_number="AB 123",
+                        departure_airport="DEL",
+                        departure_time="2027-03-15T08:00",
+                        arrival_airport="DXB",
+                        arrival_time="2027-03-15T10:00",
+                    ),
+                )
+            ],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=[
+                HotelOption(name="Hotel", city="Dubai", total_price=100000, currency="INR"),
+            ],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults",
+            saved_preferences=[
+                {
+                    "category": "budget",
+                    "min_amount": 150000,
+                    "max_amount": 250000,
+                    "currency": "INR",
+                    "budget_basis": "per_person",
+                }
+            ],
+        )
+
+        comparison = result["combined_trip_cost"]["estimates"][0]["saved_budget_comparison"]
+        self.assertEqual(comparison["status"], "within")
+        self.assertEqual(comparison["comparison_amount"], 200000)
+        self.assertEqual(comparison["travelers"], 2)
+        self.assertEqual(comparison["comparison_label"], "INR 200,000 per traveler (2 travelers)")
+
     async def test_current_budget_overrides_saved_budget_preference(self):
         agent = MasterAgent()
         agent.client = None
@@ -480,6 +536,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
         hotel = HotelOption(name="Hotel One", city="Dubai", total_price=25000, currency="INR")
         agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
             status="success",
+            trip_type="round_trip",
             options=[flight, flight.model_copy(update={"price": 11000})],
         ))
         agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
@@ -506,6 +563,8 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
             "data": {
                 "best_flights": [
                     {
+                        "departure_token": "provider-itinerary-1",
+                        "type": "Round trip",
                         "flights": [{
                             "airline": "Air",
                             "flight_number": "AB 123",
@@ -516,6 +575,7 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
                         "price": 400000,
                     },
                     {
+                        "departure_token": "provider-itinerary-2",
                         "flights": [{
                             "airline": "Air",
                             "flight_number": "CD 234",
@@ -560,12 +620,17 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.options[0].price, 400000)
         self.assertIsNone(result.options[1].price)
+        self.assertEqual(result.options[0].option_id, "provider-itinerary-1")
+        self.assertEqual(result.options[0].trip_type, "round_trip")
+        self.assertIsNone(result.options[1].trip_type)
+        self.assertIn("trip scope unspecified", result.options[1].price_label)
         self.assertEqual(
             result.price_label,
-            "Provider itinerary price for 2 travelers (round trip)",
+            "Provider prices from a search requested with 2 travelers; trip scope is reported per option when available",
         )
         self.assertEqual(len(result.return_options), 1)
         self.assertIsNone(result.return_options[0].price)
+        self.assertIsNone(result.options[0].return_leg)
 
 
 if __name__ == "__main__":
