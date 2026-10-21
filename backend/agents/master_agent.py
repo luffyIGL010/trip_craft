@@ -64,11 +64,15 @@ def _hotel_identity(option, fallback_index):
         _normalized_identity(_field(option, name))
         for name in ("name", "property_type", "platform", "address", "city", "region")
     )
-    distinctive_name = normalized[0] not in {"", "hotel", "accommodation"}
-    has_location = bool(normalized[3] or normalized[4] or normalized[5])
+    distinctive_name = normalized[0] not in {
+        "",
+        "hotel",
+        "accommodation",
+        "unnamed property",
+    }
     return (
         normalized
-        if distinctive_name or has_location
+        if distinctive_name
         else ("unidentified-hotel", fallback_index)
     )
 
