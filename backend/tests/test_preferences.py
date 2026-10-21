@@ -553,6 +553,66 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(estimates), 1)
         self.assertEqual(estimates[0]["combined_total"], 35000)
 
+    async def test_provider_option_ids_are_used_to_deduplicate_combinations(self):
+        agent = MasterAgent()
+        agent.client = None
+        first_flight = TransportOption(
+            option_id="flight-option-1",
+            provider="Air",
+            departure="out",
+            arrival="in",
+            duration="2h",
+            stops=0,
+            price=10000,
+            currency="INR",
+            trip_type="round_trip",
+            outbound_leg=FlightLeg(
+                provider="Air",
+                flight_number="AB 123",
+                departure_airport="DEL",
+                departure_time="2027-03-15T08:00",
+                arrival_airport="DXB",
+                arrival_time="2027-03-15T10:00",
+            ),
+        )
+        duplicate_flight = first_flight.model_copy(update={
+            "price": 11000,
+            "outbound_leg": first_flight.outbound_leg.model_copy(
+                update={"flight_number": "CD 234"}
+            ),
+        })
+        first_hotel = HotelOption(
+            option_id="hotel-option-1",
+            name="Hotel One",
+            city="Dubai",
+            total_price=25000,
+            currency="INR",
+        )
+        duplicate_hotel = first_hotel.model_copy(update={
+            "name": "Different display name",
+            "total_price": 26000,
+        })
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=[first_flight, duplicate_flight],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=[first_hotel, duplicate_hotel],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults"
+        )
+
+        self.assertEqual(len(result["combined_trip_cost"]["estimates"]), 1)
+        self.assertEqual(
+            result["combined_trip_cost"]["estimates"][0]["combined_total"],
+            35000,
+        )
+
 
 class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
     async def test_round_trip_query_uses_provider_itinerary_price_and_hides_return_fare(self):
