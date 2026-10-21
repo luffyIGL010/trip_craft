@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from agents.master_agent import MasterAgent
 from auth.auth import get_current_user
-from database.database import Base, get_db
+from database.database import Base, ensure_travel_preference_budget_basis, get_db
 from database.models import TravelPreference, User
 from preferences.router import router as preferences_router
 from preferences.service import (
@@ -19,8 +19,10 @@ from preferences.service import (
     extract_explicit_preferences,
     upsert_preference,
 )
+from agents.travel_agent import TravelAgent
+from agents.schemas import Budget, Dates, MasterAgentResponse
 from schemas.hotel import HotelOption, HotelResult
-from schemas.transport import TransportResult
+from schemas.transport import FlightLeg, TransportOption, TransportResult
 
 
 class PreferenceApiTests(unittest.TestCase):
@@ -78,6 +80,19 @@ class PreferenceApiTests(unittest.TestCase):
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()["value"], "luxury")
 
+        interest = self.client.post(
+            "/api/preferences",
+            json={"category": "interest", "value": "history"},
+        )
+        self.assertEqual(interest.status_code, 201)
+        interest_id = interest.json()["id"]
+        interest_update = self.client.put(
+            f"/api/preferences/{interest_id}",
+            json={"category": "interest", "value": "culture"},
+        )
+        self.assertEqual(interest_update.status_code, 200)
+        self.assertEqual(interest_update.json()["value"], "culture")
+
         self.current_user = self.other_user
         self.assertEqual(
             self.client.get("/api/preferences").json()["preferences"],
@@ -87,11 +102,26 @@ class PreferenceApiTests(unittest.TestCase):
             self.client.delete(f"/api/preferences/{preference_id}").status_code,
             404,
         )
+        self.assertEqual(
+            self.client.put(
+                f"/api/preferences/{preference_id}",
+                json={"category": "accommodation", "value": "luxury"},
+            ).status_code,
+            404,
+        )
 
         self.current_user = self.user
         self.assertEqual(
             self.client.delete(f"/api/preferences/{preference_id}").status_code,
             204,
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/preferences/{interest_id}").status_code,
+            204,
+        )
+        self.assertEqual(
+            self.client.get("/api/preferences").json()["preferences"],
+            [],
         )
 
     def test_budget_validation_and_profile_clear(self):
@@ -108,10 +138,18 @@ class PreferenceApiTests(unittest.TestCase):
                 "min_amount": 100,
                 "max_amount": 500,
                 "currency": "inr",
+                "budget_basis": "total_trip",
             },
         )
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["currency"], "INR")
+        self.assertEqual(created.json()["budget_basis"], "total_trip")
+        interest = self.client.post(
+            "/api/preferences",
+            json={"category": "interest", "value": "history"},
+        )
+        self.assertEqual(interest.status_code, 201)
+        self.assertEqual(len(self.client.get("/api/preferences").json()["preferences"]), 2)
         self.assertEqual(self.client.delete("/api/preferences").status_code, 204)
         self.assertEqual(self.client.get("/api/preferences").json()["preferences"], [])
 
@@ -138,6 +176,16 @@ class PreferenceApiTests(unittest.TestCase):
                     category="interest",
                     value="history",
                 )
+                upsert_preference(
+                    db,
+                    user.id,
+                    category="budget",
+                    value="Usual budget",
+                    min_amount=120000,
+                    max_amount=600000,
+                    currency="INR",
+                    budget_basis="total_trip",
+                )
                 db.commit()
                 user_id = user.id
             first_engine.dispose()
@@ -145,8 +193,14 @@ class PreferenceApiTests(unittest.TestCase):
             restarted_engine = create_engine(url)
             restarted_session = sessionmaker(bind=restarted_engine)
             with restarted_session() as db:
-                saved = db.query(TravelPreference).filter_by(user_id=user_id).one()
+                saved = db.query(TravelPreference).filter_by(
+                    user_id=user_id, category="interest"
+                ).one()
                 self.assertEqual(saved.value, "history")
+                saved_budget = db.query(TravelPreference).filter_by(
+                    user_id=user_id, category="budget"
+                ).one()
+                self.assertEqual(saved_budget.budget_basis, "total_trip")
             restarted_engine.dispose()
 
     def test_only_recurring_explicit_preferences_are_extracted(self):
@@ -172,6 +226,30 @@ class PreferenceApiTests(unittest.TestCase):
         self.assertIn("accommodation", categories)
         self.assertNotIn("budget", categories)
         self.assertIn("budget", explicit_categories_in_request("My budget is INR 50,000"))
+
+    def test_existing_preference_table_gets_unspecified_basis_additively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = create_engine(f"sqlite:///{Path(directory) / 'legacy.db'}")
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE travel_preferences ("
+                    "id INTEGER PRIMARY KEY, user_id INTEGER, category VARCHAR, "
+                    "value VARCHAR, min_amount FLOAT, max_amount FLOAT, currency VARCHAR)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO travel_preferences "
+                    "(id, user_id, category, value, min_amount, max_amount, currency) "
+                    "VALUES (1, 7, 'budget', '', 120000, 600000, 'INR')"
+                )
+
+            ensure_travel_preference_budget_basis(engine)
+            with engine.connect() as connection:
+                row = connection.exec_driver_sql(
+                    "SELECT min_amount, max_amount, currency, budget_basis "
+                    "FROM travel_preferences WHERE id = 1"
+                ).one()
+                self.assertEqual(tuple(row), (120000, 600000, "INR", "unspecified"))
+            engine.dispose()
 
 
 class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
@@ -255,6 +333,224 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             [item["name"] for item in response["hotel_results"]["options"]],
             ["First result", "Second result"],
         )
+
+    async def test_total_trip_budget_compares_against_combined_all_traveler_estimate(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            travelers=2,
+            trip_type="round_trip",
+            options=[
+                TransportOption(
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="2h",
+                    stops=0,
+                    price=300000,
+                    currency="INR",
+                    price_label="Provider itinerary price for 2 travelers (round trip)",
+                    trip_type="round_trip",
+                    outbound_leg=FlightLeg(
+                        provider="Air",
+                        flight_number="AB 123",
+                        departure_airport="DEL",
+                        departure_time="2027-03-15T08:00",
+                        arrival_airport="DXB",
+                        arrival_time="2027-03-15T10:00",
+                    ),
+                )
+            ],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=[
+                HotelOption(
+                    name="Within budget stay",
+                    city="Dubai",
+                    total_price=100000,
+                    currency="INR",
+                ),
+                HotelOption(
+                    name="Above budget stay",
+                    city="Dubai",
+                    total_price=350000,
+                    currency="INR",
+                ),
+            ],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults",
+            saved_preferences=[
+                {
+                    "category": "budget",
+                    "min_amount": 120000,
+                    "max_amount": 600000,
+                    "currency": "INR",
+                    "budget_basis": "total_trip",
+                }
+            ],
+        )
+
+        estimate = result["combined_trip_cost"]["estimates"][0]
+        self.assertEqual(estimate["combined_total"], 400000)
+        self.assertEqual(estimate["flight_scope"], "Provider itinerary price for 2 travelers (round trip)")
+        self.assertEqual(estimate["saved_budget_comparison"]["status"], "within")
+        self.assertEqual(
+            result["combined_trip_cost"]["estimates"][1]["saved_budget_comparison"]["status"],
+            "above",
+        )
+        self.assertTrue(
+            any(
+                "total trip, all travelers" in preference
+                for preference in result["plan"]["preferences"]
+            )
+        )
+        self.assertTrue(
+            any("INR 120,000–INR 600,000" in preference
+                for preference in result["plan"]["preferences"])
+        )
+
+    async def test_current_budget_overrides_saved_budget_preference(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(
+            return_value=TransportResult(status="needs_information")
+        )
+        agent.hotel_agent.execute = AsyncMock(
+            return_value=HotelResult(status="needs_information")
+        )
+        result = await agent.process_request(
+            "Plan a 5 day trip to Dubai from Delhi for 2 adults with a budget of 50000",
+            saved_preferences=[
+                {
+                    "category": "budget",
+                    "min_amount": 120000,
+                    "max_amount": 600000,
+                    "currency": "INR",
+                    "budget_basis": "total_trip",
+                }
+            ],
+        )
+        preferences = result["plan"]["preferences"]
+        self.assertTrue(
+            any("Current trip request overrides saved budget" in item for item in preferences)
+        )
+        self.assertFalse(any("Saved travel preference — usual budget" in item for item in preferences))
+
+    async def test_duplicate_flight_and_hotel_options_create_one_combination(self):
+        agent = MasterAgent()
+        agent.client = None
+        flight = TransportOption(
+            provider="Air",
+            departure="out",
+            arrival="in",
+            duration="2h",
+            stops=0,
+            price=10000,
+            currency="INR",
+            trip_type="round_trip",
+            outbound_leg=FlightLeg(
+                provider="Air",
+                flight_number="AB 123",
+                departure_airport="DEL",
+                departure_time="2027-03-15T08:00",
+                arrival_airport="DXB",
+                arrival_time="2027-03-15T10:00",
+            ),
+        )
+        hotel = HotelOption(name="Hotel One", city="Dubai", total_price=25000, currency="INR")
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            options=[flight, flight.model_copy(update={"price": 11000})],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=[hotel, hotel.model_copy(update={"total_price": 26000})],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults"
+        )
+
+        estimates = result["combined_trip_cost"]["estimates"]
+        self.assertEqual(len(estimates), 1)
+        self.assertEqual(estimates[0]["combined_total"], 35000)
+
+
+class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_round_trip_query_uses_provider_itinerary_price_and_hides_return_fare(self):
+        agent = TravelAgent()
+        search = AsyncMock(return_value={
+            "is_mock": False,
+            "trip_type": "round_trip",
+            "data": {
+                "best_flights": [
+                    {
+                        "flights": [{
+                            "airline": "Air",
+                            "flight_number": "AB 123",
+                            "departure_airport": {"id": "DEL", "time": "2027-03-15T08:00"},
+                            "arrival_airport": {"id": "DXB", "time": "2027-03-15T10:00"},
+                        }],
+                        "total_duration": 120,
+                        "price": 400000,
+                    },
+                    {
+                        "flights": [{
+                            "airline": "Air",
+                            "flight_number": "CD 234",
+                            "departure_airport": {"id": "DEL", "time": "2027-03-15T12:00"},
+                            "arrival_airport": {"id": "DXB", "time": "2027-03-15T14:00"},
+                        }],
+                        "total_duration": 120,
+                    },
+                ]
+            },
+            "return_data": {
+                "best_flights": [{
+                    "flights": [{
+                        "airline": "Air",
+                        "flight_number": "AB 124",
+                        "departure_airport": {"id": "DXB", "time": "2027-03-20T12:00"},
+                        "arrival_airport": {"id": "DEL", "time": "2027-03-20T14:00"},
+                    }],
+                    "total_duration": 120,
+                    "price": 200000,
+                }]
+            },
+        })
+        agent.api_client.search_flights = search
+        plan = MasterAgentResponse(
+            request_summary="Dubai trip",
+            origin="Delhi",
+            destination="Dubai",
+            dates=Dates(start="2027-03-15", end="2027-03-20"),
+            travelers=2,
+            budget=Budget(),
+        )
+
+        result = await agent.execute(plan)
+
+        search.assert_awaited_once_with(
+            origin="DEL",
+            destination="DXB",
+            outbound_date="2027-03-15",
+            return_date="2027-03-20",
+            travelers=2,
+        )
+        self.assertEqual(result.options[0].price, 400000)
+        self.assertIsNone(result.options[1].price)
+        self.assertEqual(
+            result.price_label,
+            "Provider itinerary price for 2 travelers (round trip)",
+        )
+        self.assertEqual(len(result.return_options), 1)
+        self.assertIsNone(result.return_options[0].price)
 
 
 if __name__ == "__main__":

@@ -105,6 +105,7 @@ async def websocket_endpoint(
                                 "min_amount": preference.min_amount,
                                 "max_amount": preference.max_amount,
                                 "currency": preference.currency,
+                                "budget_basis": preference.budget_basis,
                             }
                             for preference in list_preferences(db, user.id)
                         ]

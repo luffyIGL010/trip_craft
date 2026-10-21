@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional
 from schemas.transport import TransportResult, TransportOption, FlightLeg
 from services.transport_api import TransportAPIClient
@@ -213,16 +214,14 @@ class TravelAgent:
                 travelers=travelers
             )
             
-            # 3. Accurate price labeling (Total price for all passengers as verified from API)
-            if travelers > 1:
-                price_label = f"Total for {travelers} travelers"
-            else:
-                price_label = "Total price (1 traveler)"
-
-            if is_round_trip:
-                price_label += " (Round trip)"
-            else:
-                price_label += " (One way)"
+            # The search request includes the passenger count and, for round trips,
+            # the return date. The provider's itinerary price is shown as returned.
+            trip_label = "round trip" if is_round_trip else "one way"
+            price_source = "Mock" if api_response.get("is_mock", False) else "Provider"
+            price_label = (
+                f"{price_source} itinerary price for {travelers} traveler"
+                f"{'s' if travelers != 1 else ''} ({trip_label})"
+            )
 
             # 4. Parse and normalize outbound flights
             options = []
@@ -232,7 +231,12 @@ class TravelAgent:
 
             for f in raw_flights[:5]: # Limit to top 5 options
                 airline = extract_airline(f)
-                price = f.get("price", 0)
+                try:
+                    price = float(f["price"])
+                    if not math.isfinite(price) or price <= 0:
+                        price = None
+                except (KeyError, TypeError, ValueError):
+                    price = None
                 duration_mins = f.get("total_duration", 0)
                 duration_str = f"{duration_mins // 60}h {duration_mins % 60}m" if duration_mins else "Unknown"
                 
@@ -248,7 +252,7 @@ class TravelAgent:
                     arrival=arrival_time,
                     duration=duration_str,
                     stops=max(0, len(flights_list) - 1),
-                    price=float(price) if price else 0.0,
+                    price=price,
                     currency="INR",
                     price_type="total",
                     price_label=price_label,
@@ -282,10 +286,10 @@ class TravelAgent:
                         arrival=ret_arr,
                         duration=ret_dur_str,
                         stops=max(0, len(ret_fl_list) - 1),
-                        price=float(rf.get("price", 0)) if rf.get("price") else 0.0,
+                        price=None,
                         currency="INR",
-                        price_type="total",
-                        price_label=price_label,
+                        price_type="unavailable",
+                        price_label=None,
                         trip_type="round_trip",
                         outbound_leg=ret_leg,
                         return_leg=None

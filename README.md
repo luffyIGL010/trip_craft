@@ -115,9 +115,9 @@ Open `frontend/index.html` in your browser.
 
 ## Persistent Travel Preferences
 
-The dashboard includes a per-user travel preference profile for destinations, budget ranges, accommodation style, interests, transportation, trip pace, dietary preferences, and accessibility requirements. Users can view, add, edit, delete, or clear their profile from the **Travel Preferences** section.
+The dashboard includes a per-user travel preference profile for destinations, budget ranges, accommodation style, interests, transportation, trip pace, dietary preferences, and accessibility requirements. Budget ranges explicitly select **total trip (all travelers combined)** or **per person**. Existing budget records are migrated as **meaning not set** and are not compared until the user edits them and selects a basis. Users can view, add, edit, delete, or clear their profile from the **Travel Preferences** section.
 
-Preferences are stored in the existing SQLite database in a `travel_preferences` table. The existing `Base.metadata.create_all()` startup step creates this new table without deleting or recreating existing tables. Start the backend from `backend/` as usual so it continues using `backend/travelagent.db`.
+Preferences are stored in the existing SQLite database in a `travel_preferences` table. The existing `Base.metadata.create_all()` startup step creates this new table without deleting or recreating existing tables. Startup also adds the `budget_basis` column in place for an existing preference table. This additive SQLite change leaves existing budget amounts untouched and marks their basis unspecified. Start the backend from `backend/` as usual so it continues using `backend/travelagent.db`.
 
 The authenticated API is under `/api/preferences`:
 
@@ -127,4 +127,10 @@ The authenticated API is under `/api/preferences`:
 - `DELETE /api/preferences/{preference_id}` deletes an owned preference.
 - `DELETE /api/preferences` clears the signed-in user's profile.
 
-The chat workflow saves only recognized, explicitly recurring preferences (for example, “I usually prefer budget hotels and historical places”). Saved preferences are suggestions: current-trip accommodation instructions take precedence, and actual search results and prices are not fabricated. Activity and itinerary agents are not implemented yet, so interests and pace are currently passed through as planning context rather than generating those recommendations.
+The chat workflow saves only recognized, explicitly recurring preferences (for example, “I usually prefer budget hotels and historical places”). Saved preferences are suggestions: current-trip instructions take precedence. When a total-trip INR budget is explicitly selected, each available combined flight-and-hotel estimate is compared with that range for the requested trip party; per-person or unspecified budgets are not compared to trip totals. Flight prices come from the provider itinerary search requested for the stated passenger count and trip dates. Return-leg details are not presented with a separate fare because the current response mapping cannot verify one independently. Activity and itinerary agents are not implemented yet, so interests and pace are currently passed through as planning context rather than generating those recommendations.
+
+Run focused preference and fare-mapping checks from the repository root with:
+
+```bash
+PYTHONPATH=backend venv/bin/python -m unittest discover -s backend/tests -v
+```

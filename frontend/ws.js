@@ -94,7 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render Phase 5 Transport Results
         if (transportResults) {
             const isRoundTrip = transportResults.trip_type === "round_trip" || !!transportResults.return_date;
-            const priceLabelText = transportResults.price_label || (isRoundTrip ? "Total for round trip" : "Total price");
+            const priceLabelText = transportResults.price_label || "Provider price scope not specified";
+            const returnFareNotice = isRoundTrip
+                ? "Return-leg details are shown without a separately verified fare."
+                : "This is a one-way itinerary; no return fare is included.";
 
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid var(--primary-color);">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -128,13 +131,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Accurate Total Price Callout (Requirement 4)
                 html += `<div style="font-size:0.85rem; color:#0369a1; background:#f0f9ff; padding:6px 10px; border-radius:4px; margin:8px 0; border:1px solid #bae6fd;">
-                    <strong>💰 Price Notice:</strong> All fares shown are <strong>${priceLabelText}</strong> (all requested passengers combined).
+                    <strong>💰 Price Notice:</strong> Each fare is the <strong>${escapeHtml(priceLabelText)}</strong>. ${returnFareNotice}
                 </div>`;
 
                 // Outbound Flights Section (Requirement 3)
                 html += `<div style="margin-top:10px;">
                     <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                        <span>🛫 Outbound Flights</span>
+                        <span>🛫 Flight Itinerary Options</span>
                         <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.origin} → ${transportResults.destination} • ${transportResults.outbound_date || ''})</span>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">`;
@@ -151,8 +154,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 ${flightNumBadge}
                             </div>
                             <div style="text-align:right;">
-                                <strong style="color:var(--primary-color); font-size:1.05rem;">₹${opt.price.toLocaleString()}</strong>
-                                <span style="font-size:0.75rem; color:#64748b; display:block;">total</span>
+                                <strong style="color:var(--primary-color); font-size:1.05rem;">${opt.price === null || opt.price === undefined ? 'Price unavailable' : `₹${Number(opt.price).toLocaleString()}`}</strong>
+                                ${opt.price !== null && opt.price !== undefined ? '<span style="font-size:0.75rem; color:#64748b; display:block;">provider itinerary price</span>' : ''}
                             </div>
                         </div>
                         <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
@@ -167,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (transportResults.return_options && transportResults.return_options.length > 0) {
                     html += `<div style="margin-top:14px;">
                         <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                            <span>🛬 Return Flights</span>
+                            <span>🛬 Return Leg Details (no separate fare)</span>
                             <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.destination} → ${transportResults.origin} • ${transportResults.return_date || ''})</span>
                         </div>
                         <div style="display:flex; flex-direction:column; gap:8px;">`;
@@ -332,6 +335,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 combinedTripCost.estimates.forEach((est, idx) => {
                     if (est.status === "available") {
+                        const budgetComparison = est.saved_budget_comparison;
+                        let budgetStatusHtml = '';
+                        if (budgetComparison && budgetComparison.status) {
+                            const budgetLabels = {
+                                within: 'Within saved total-trip budget',
+                                above: 'Above saved total-trip budget',
+                                below: 'Below saved total-trip budget',
+                                not_compared_basis_unspecified: 'Budget comparison unavailable: saved budget meaning is not set',
+                                not_compared_per_person: 'Budget comparison skipped: saved budget is per person',
+                                not_compared_currency_mismatch: 'Budget comparison unavailable: currencies do not match'
+                            };
+                            const minBudget = budgetComparison.min_amount;
+                            const maxBudget = budgetComparison.max_amount;
+                            const budgetRange = minBudget !== undefined && maxBudget !== undefined
+                                ? ` (INR ${Number(minBudget).toLocaleString()}–${Number(maxBudget).toLocaleString()})`
+                                : minBudget !== undefined
+                                    ? ` (minimum INR ${Number(minBudget).toLocaleString()})`
+                                    : maxBudget !== undefined
+                                        ? ` (maximum INR ${Number(maxBudget).toLocaleString()})`
+                                        : '';
+                            budgetStatusHtml = `<div style="margin-top:6px;"><strong>${escapeHtml(budgetLabels[budgetComparison.status] || 'Saved budget not compared')}${budgetRange}</strong></div>`;
+                        }
                         // Embed a sentinel div with a data-combo-idx for PayPal button mounting
                         const comboIdx = checkoutCombos.length;
                         checkoutCombos.push({
@@ -351,6 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div style="font-size:0.85rem; color:#4c1d95; line-height:1.5;">
                                 <div>✈️ <strong>Flight:</strong> ${escapeHtml(est.flight_option)} • ₹${est.flight_price.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.flight_scope)})</span></div>
                                 <div>🏨 <strong>Hotel:</strong> ${escapeHtml(est.hotel_option)} • ₹${est.hotel_total.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.hotel_scope)})</span></div>
+                                ${budgetStatusHtml}
                             </div>
                             <div style="margin-top:8px; font-size:0.75rem; color:#6b7280; border-top:1px dashed #c4b5fd; padding-top:6px; line-height:1.4;">
                                 <div><strong>Includes:</strong> ${escapeHtml(est.inclusions || 'Flight + Hotel')}</div>

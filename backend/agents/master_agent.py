@@ -14,6 +14,59 @@ from preferences.service import (
 
 logger = logging.getLogger(__name__)
 
+
+def _field(value, name, default=None):
+    return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
+
+
+def _normalized_identity(value):
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip().casefold()
+
+
+def _flight_identity(option, fallback_index):
+    outbound = _field(option, "outbound_leg")
+    returning = _field(option, "return_leg")
+    components = [
+        _field(option, "provider"),
+        _field(option, "trip_type"),
+        _field(outbound, "flight_number"),
+        _field(outbound, "departure_airport"),
+        _field(outbound, "departure_time"),
+        _field(outbound, "arrival_airport"),
+        _field(outbound, "arrival_time"),
+        _field(returning, "flight_number"),
+        _field(returning, "departure_airport"),
+        _field(returning, "departure_time"),
+        _field(returning, "arrival_airport"),
+        _field(returning, "arrival_time"),
+    ]
+    normalized = tuple(_normalized_identity(part) for part in components)
+    return (
+        normalized
+        if any(normalized[2:])
+        else ("unidentified-flight", fallback_index)
+    )
+
+
+def _hotel_identity(option, fallback_index):
+    url = _normalized_identity(_field(option, "url"))
+    if url:
+        return ("url", url)
+    normalized = tuple(
+        _normalized_identity(_field(option, name))
+        for name in ("name", "property_type", "platform", "address", "city", "region")
+    )
+    distinctive_name = normalized[0] not in {"", "hotel", "accommodation"}
+    has_location = bool(normalized[3] or normalized[4] or normalized[5])
+    return (
+        normalized
+        if distinctive_name or has_location
+        else ("unidentified-hotel", fallback_index)
+    )
+
+
 # The system prompt instructs the LLM to act as an orchestrator only
 SYSTEM_PROMPT = """You are a Master Travel Agent Orchestrator. Your ONLY job is to analyze a user's travel request and return a structured JSON plan.
 
@@ -76,6 +129,8 @@ class MasterAgent:
             plan = self._mock_response(user_message)
 
         current_categories = explicit_categories_in_request(user_message)
+        if plan.budget.amount is not None:
+            current_categories.add("budget")
         applicable_preferences = [
             preference
             for preference in (saved_preferences or [])
@@ -84,6 +139,17 @@ class MasterAgent:
         for preference in applicable_preferences:
             plan.preferences.append(
                 f"Saved travel preference — {preference_label(preference)}"
+            )
+        overridden_categories = {
+            preference.get("category")
+            for preference in (saved_preferences or [])
+            if preference.get("category") in current_categories
+        }
+        if overridden_categories:
+            plan.preferences.append(
+                "Current trip request overrides saved "
+                + ", ".join(sorted(overridden_categories))
+                + " preference(s)."
             )
             
         response_data = {
@@ -171,42 +237,134 @@ class MasterAgent:
             hotel_opts = hr.get("options") or []
             travelers = plan.travelers or 1
             nights = hr.get("nights") or 0
+            unique_flights = []
+            seen_flights = set()
+            for index, option in enumerate(flight_opts):
+                identity = _flight_identity(option, index)
+                if identity not in seen_flights:
+                    seen_flights.add(identity)
+                    unique_flights.append(option)
+
+            unique_hotels = []
+            seen_hotels = set()
+            for index, option in enumerate(hotel_opts):
+                identity = _hotel_identity(option, index)
+                if identity not in seen_hotels:
+                    seen_hotels.add(identity)
+                    unique_hotels.append(option)
+
+            saved_budget = next(
+                (
+                    preference
+                    for preference in applicable_preferences
+                    if preference.get("category") == "budget"
+                ),
+                None,
+            )
+            comparison_budget = None
+            if saved_budget and saved_budget.get("budget_basis") == "total_trip":
+                if (saved_budget.get("currency") or "").upper() == "INR":
+                    comparison_budget = {
+                        "min_amount": saved_budget.get("min_amount"),
+                        "max_amount": saved_budget.get("max_amount"),
+                        "currency": "INR",
+                    }
+                else:
+                    comparison_budget = {"status": "not_compared_currency_mismatch"}
+            elif saved_budget:
+                comparison_budget = {
+                    "status": "not_compared_basis_unspecified"
+                    if saved_budget.get("budget_basis", "unspecified") == "unspecified"
+                    else "not_compared_per_person"
+                }
 
             # Generate useful comparisons for the best flight options and hotel options
-            for f_idx, fl in enumerate(flight_opts[:3]):
+            seen_combinations = set()
+            for f_idx, fl in enumerate(unique_flights[:3]):
                 f_price = fl.get("price")
                 f_provider = fl.get("provider") or "Flight"
                 f_type = fl.get("trip_type") or "flight"
 
-                for h_idx, ht in enumerate(hotel_opts[:3]):
+                for h_idx, ht in enumerate(unique_hotels[:3]):
+                    combination_id = (
+                        _flight_identity(fl, f_idx),
+                        _hotel_identity(ht, h_idx),
+                    )
+                    if combination_id in seen_combinations:
+                        continue
+                    seen_combinations.add(combination_id)
+
                     h_total = ht.get("total_price")
                     h_nightly = ht.get("nightly_price")
                     h_name = ht.get("name") or "Hotel"
+                    same_currency = (
+                        (fl.get("currency") or "INR").upper()
+                        == (ht.get("currency") or "").upper()
+                        == "INR"
+                    )
 
-                    if f_price is not None and f_price > 0 and h_total is not None and h_total > 0:
+                    if (
+                        same_currency
+                        and f_price is not None
+                        and f_price > 0
+                        and h_total is not None
+                        and h_total > 0
+                    ):
                         comb_total = float(f_price + h_total)
-                        combined_estimates.append({
+                        estimate = {
                             "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                            "flight_option_id": repr(combination_id[0]),
                             "flight_price": float(f_price),
-                            "flight_scope": f"Total for {travelers} traveler{'s' if travelers > 1 else ''} ({'round trip' if f_type == 'round_trip' else 'one way'})",
+                            "flight_scope": fl.get("price_label") or (
+                                f"Provider itinerary price for {travelers} traveler"
+                                f"{'s' if travelers > 1 else ''} "
+                                f"({'round trip' if f_type == 'round_trip' else 'one way'})"
+                            ),
                             "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                            "hotel_option_id": repr(combination_id[1]),
                             "hotel_total": float(h_total),
                             "hotel_nightly": float(h_nightly) if h_nightly else None,
                             "hotel_scope": f"Total for {nights} night{'s' if nights != 1 else ''}",
                             "combined_total": comb_total,
                             "currency": "INR",
                             "formatted_total": f"₹{comb_total:,.0f}",
-                            "inclusions": f"Round-trip airfare ({travelers} traveler{'s' if travelers > 1 else ''}) + accommodation ({nights} night{'s' if nights != 1 else ''})",
+                            "inclusions": (
+                                f"Provider flight itinerary price for {travelers} "
+                                f"traveler{'s' if travelers != 1 else ''} + "
+                                f"accommodation total for {nights} night"
+                                f"{'s' if nights != 1 else ''}"
+                            ),
                             "exclusions": "Excludes local transfers, meals, attraction entry fees, visa, and personal expenses.",
                             "disclaimer": "Search estimate only. Fares and room rates are subject to real-time availability and provider confirmation; prices are not guaranteed until booked.",
                             "status": "available"
-                        })
+                        }
+                        if comparison_budget and "status" not in comparison_budget:
+                            minimum = comparison_budget["min_amount"]
+                            maximum = comparison_budget["max_amount"]
+                            if maximum is not None and comb_total > maximum:
+                                budget_status = "above"
+                            elif minimum is not None and comb_total < minimum:
+                                budget_status = "below"
+                            else:
+                                budget_status = "within"
+                            estimate["saved_budget_comparison"] = {
+                                **comparison_budget,
+                                "status": budget_status,
+                            }
+                        elif comparison_budget:
+                            estimate["saved_budget_comparison"] = comparison_budget
+                        combined_estimates.append(estimate)
                     else:
                         combined_estimates.append({
                             "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                            "flight_option_id": repr(combination_id[0]),
                             "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                            "hotel_option_id": repr(combination_id[1]),
                             "status": "unavailable",
-                            "message": "Combined cost unavailable (reliable price unavailable for one or both options)"
+                            "message": (
+                                "Combined cost unavailable (currency mismatch or "
+                                "reliable price unavailable for one or both options)"
+                            )
                         })
 
         response_data["combined_trip_cost"] = {

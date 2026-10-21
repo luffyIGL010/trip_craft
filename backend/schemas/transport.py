@@ -18,10 +18,10 @@ class TransportOption(BaseModel):
     arrival: str
     duration: str
     stops: int
-    price: float
+    price: Optional[float] = None
     currency: str = "INR"
-    price_type: str = "total"  # "total" for all travelers combined as verified from API
-    price_label: Optional[str] = None  # e.g. "Total (2 travelers, round trip)"
+    price_type: str = "total"
+    price_label: Optional[str] = None
     trip_type: Optional[str] = "one_way"  # "one_way" or "round_trip"
     outbound_leg: Optional[FlightLeg] = None
     return_leg: Optional[FlightLeg] = None
@@ -37,7 +37,7 @@ class TransportResult(BaseModel):
     outbound_date: Optional[str] = None
     return_date: Optional[str] = None
     travelers: Optional[int] = 1
-    price_type: str = "total"  # Total price verified based on API documentation and response
+    price_type: str = "total"
     price_label: Optional[str] = None
     options: List[TransportOption] = []  # Outbound or bundled flight options
     return_options: List[TransportOption] = []  # Return flight options if available

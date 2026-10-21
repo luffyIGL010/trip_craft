@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, ForeignKey, text
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -61,5 +61,11 @@ class TravelPreference(Base):
     min_amount = Column(Float, nullable=True)
     max_amount = Column(Float, nullable=True)
     currency = Column(String, nullable=True)
+    budget_basis = Column(
+        String,
+        nullable=False,
+        default="unspecified",
+        server_default=text("'unspecified'"),
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth.auth import router as auth_router
 from websocket import router as ws_router
 from preferences.router import router as preferences_router
-from database.database import engine, Base
+from database.database import engine, Base, ensure_travel_preference_budget_basis
 
 # Create database tables upon startup
 Base.metadata.create_all(bind=engine)
+ensure_travel_preference_budget_basis()
 
 app = FastAPI(title="TravelAgent Backend")
 

@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const minInput = document.getElementById('preferenceMin');
     const maxInput = document.getElementById('preferenceMax');
     const currencyInput = document.getElementById('preferenceCurrency');
+    const budgetBasisInput = document.getElementById('preferenceBudgetBasis');
     const list = document.getElementById('travelPreferencesList');
     const emptyMessage = document.getElementById('emptyPreferences');
     const status = document.getElementById('preferenceStatus');
@@ -60,7 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
             : `${preference.currency || ''} ${Number(value).toLocaleString()}`.trim();
         const lower = amount(preference.min_amount);
         const upper = amount(preference.max_amount);
-        return lower && upper ? `${lower} – ${upper}` : lower || upper || preference.value;
+        const range = lower && upper ? `${lower} – ${upper}` : lower || upper || preference.value;
+        const basis = {
+            total_trip: 'total trip (all travelers combined)',
+            per_person: 'per person',
+            unspecified: 'meaning not set'
+        }[preference.budget_basis] || 'meaning not set';
+        return `${range} · ${basis}`;
     }
 
     function renderPreferences() {
@@ -104,12 +111,14 @@ document.addEventListener('DOMContentLoaded', () => {
         budgetFields.classList.toggle('hidden', !isBudget);
         valueGroup.classList.toggle('hidden', isBudget);
         valueInput.required = !isBudget;
+        budgetBasisInput.required = isBudget;
     }
 
     function resetForm() {
         editingId = null;
         form.reset();
         currencyInput.value = 'INR';
+        budgetBasisInput.value = '';
         saveButton.textContent = 'Save preference';
         cancelButton.classList.add('hidden');
         updateCategoryFields();
@@ -122,6 +131,9 @@ document.addEventListener('DOMContentLoaded', () => {
         minInput.value = preference.min_amount ?? '';
         maxInput.value = preference.max_amount ?? '';
         currencyInput.value = preference.currency || 'INR';
+        budgetBasisInput.value = preference.budget_basis === 'unspecified'
+            ? ''
+            : preference.budget_basis;
         saveButton.textContent = 'Update preference';
         cancelButton.classList.remove('hidden');
         updateCategoryFields();
@@ -163,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             body.min_amount = minInput.value === '' ? null : Number(minInput.value);
             body.max_amount = maxInput.value === '' ? null : Number(maxInput.value);
             body.currency = currencyInput.value.trim().toUpperCase() || 'INR';
+            body.budget_basis = budgetBasisInput.value || 'unspecified';
         }
 
         saveButton.disabled = true;

@@ -26,6 +26,7 @@ PreferenceCategory = Literal[
     "dietary",
     "accessibility",
 ]
+BudgetBasis = Literal["total_trip", "per_person", "unspecified"]
 
 
 class PreferenceInput(BaseModel):
@@ -34,6 +35,7 @@ class PreferenceInput(BaseModel):
     min_amount: Optional[float] = Field(default=None, ge=0)
     max_amount: Optional[float] = Field(default=None, ge=0)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    budget_basis: BudgetBasis = "unspecified"
 
     @validator("value")
     def trim_value(cls, value: str) -> str:
@@ -83,6 +85,7 @@ def serialize_preference(preference: TravelPreference) -> dict:
         "min_amount": preference.min_amount,
         "max_amount": preference.max_amount,
         "currency": preference.currency,
+        "budget_basis": preference.budget_basis,
     }
 
 
@@ -111,6 +114,7 @@ def create_preference(
         min_amount=body.min_amount,
         max_amount=body.max_amount,
         currency=body.currency,
+        budget_basis=body.budget_basis,
     )
     db.commit()
     db.refresh(preference)
@@ -158,6 +162,7 @@ def update_preference(
     preference.min_amount = body.min_amount
     preference.max_amount = body.max_amount
     preference.currency = body.currency
+    preference.budget_basis = body.budget_basis
     db.commit()
     db.refresh(preference)
     return serialize_preference(preference)

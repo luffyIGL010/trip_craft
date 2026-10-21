@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
@@ -19,3 +19,18 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_travel_preference_budget_basis(bind=engine):
+    """Add the preference-basis column without altering existing preference values."""
+    inspector = inspect(bind)
+    if not inspector.has_table("travel_preferences"):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("travel_preferences")}
+    if "budget_basis" not in columns:
+        with bind.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE travel_preferences "
+                "ADD COLUMN budget_basis VARCHAR NOT NULL DEFAULT 'unspecified'"
+            ))

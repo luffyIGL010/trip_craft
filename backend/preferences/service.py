@@ -54,12 +54,14 @@ def preference_label(preference: TravelPreference | dict) -> str:
         minimum = preference.get("min_amount")
         maximum = preference.get("max_amount")
         currency = preference.get("currency")
+        budget_basis = preference.get("budget_basis", "unspecified")
     else:
         category = preference.category
         value = preference.value
         minimum = preference.min_amount
         maximum = preference.max_amount
         currency = preference.currency
+        budget_basis = preference.budget_basis
 
     if category == "budget":
         lower = f"{currency or ''} {minimum:,.0f}".strip() if minimum is not None else None
@@ -68,7 +70,11 @@ def preference_label(preference: TravelPreference | dict) -> str:
             value = f"{lower}–{upper}"
         else:
             value = lower or upper or value
-        return f"usual budget range: {value}"
+        basis_label = {
+            "total_trip": "total trip, all travelers",
+            "per_person": "per person",
+        }.get(budget_basis, "basis unspecified")
+        return f"usual budget range ({basis_label}): {value}"
     return f"{category}: {value}"
 
 
@@ -103,6 +109,7 @@ def upsert_preference(
     min_amount: Optional[float] = None,
     max_amount: Optional[float] = None,
     currency: Optional[str] = None,
+    budget_basis: str = "unspecified",
     replace_single_value: bool = True,
 ) -> TravelPreference:
     existing = None
@@ -143,6 +150,7 @@ def upsert_preference(
     existing.min_amount = min_amount
     existing.max_amount = max_amount
     existing.currency = currency
+    existing.budget_basis = budget_basis
     return existing
 
 
