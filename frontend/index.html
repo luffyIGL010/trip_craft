@@ -3,28 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TravelAgent Dashboard</title>
+    <title>TravelAgent — Your personal trip planner</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <div class="header-badge">✈️ Intelligent Multi-Agent Travel Planner</div>
-            <h1>TravelAgent</h1>
-            <p>Real-time flights, verified hotels & smart trip estimates</p>
+        <header class="site-header">
+            <a class="brand-lockup" href="index.html" aria-label="TravelAgent home">
+                <span class="brand-mark" aria-hidden="true">✈</span>
+                <span class="brand-copy">
+                    <span class="header-badge">YOUR PERSONAL TRAVEL DESK</span>
+                    <h1>TravelAgent</h1>
+                </span>
+            </a>
+            <div class="header-note">
+                <span class="header-note-icon" aria-hidden="true">✦</span>
+                <p>Thoughtful trips start with<br><strong>a little inspiration.</strong></p>
+            </div>
         </header>
 
         <main>
             <!-- Protected Area (Shown only when authenticated) -->
             <div id="protectedArea" class="hidden">
                 <!-- User Bar Card -->
-                <div class="card">
+                <div class="card profile-card">
                     <div class="user-bar">
                         <div class="user-info">
                             <div class="user-avatar" id="userAvatar">U</div>
                             <div>
                                 <h2 id="welcomeMessage" style="margin:0;">Welcome, Traveler</h2>
-                                <span style="font-size:0.8rem; color:var(--text-muted);">Verified Session</span>
+                                <span class="profile-caption"><span class="profile-caption-dot"></span> Your travel workspace</span>
                             </div>
                         </div>
                         <div class="actions">
@@ -36,9 +44,10 @@
                     <div id="statusArea" class="status-box hidden"></div>
                 </div>
 
-                <section class="card" aria-labelledby="travelPreferencesTitle">
+                <section class="card preferences-card" aria-labelledby="travelPreferencesTitle">
                     <div class="preferences-header">
                         <div>
+                            <span class="section-eyebrow">MAKE IT YOURS</span>
                             <h2 id="travelPreferencesTitle">Travel Preferences</h2>
                             <p class="subtitle">Save recurring preferences to personalize future trip plans. You can edit or clear them anytime.</p>
                         </div>
@@ -95,13 +104,14 @@
                 </section>
 
                 <!-- Master Agent Chat UI -->
-                <div class="card">
+                <section class="card planner-card" aria-labelledby="plannerTitle">
                     <div class="ws-controls-wrapper">
                         <div>
-                            <h2>Plan Your Trip</h2>
-                            <p class="subtitle" style="margin:0;">Describe your ideal destination, dates, and budget.</p>
+                            <span class="section-eyebrow">A BETTER WAY TO GET THERE</span>
+                            <h2 id="plannerTitle">Where would you like to go?</h2>
+                            <p class="subtitle planner-subtitle">Tell your travel assistant what you have in mind. We’ll help shape the rest.</p>
                         </div>
-                        <div style="display:flex; align-items:center; gap:12px;">
+                        <div class="planner-connection">
                             <div class="ws-status-indicator">
                                 <span id="wsStatusDot" class="status-dot disconnected"></span>
                                 <span id="wsStatusText" class="badge disconnected">Disconnected</span>
@@ -114,11 +124,14 @@
                     </div>
 
                     <!-- Dynamic Quick Prompt Chips -->
-                    <div class="quick-prompts" id="quickPrompts">
+                    <div class="prompt-section">
+                        <p class="prompt-label">A few ideas to get you started</p>
+                        <div class="quick-prompts" id="quickPrompts">
                         <span class="quick-chip" data-prompt="Plan an international trip to Singapore from Bengaluru from May 5, 2027 to May 12, 2027 for 2 adults">🇸🇬 Singapore from BLR (May 2027)</span>
                         <span class="quick-chip" data-prompt="Plan a trip to Goa from Delhi from January 10, 2027 to January 14, 2027 for 2 adults">🏖️ Goa from Delhi (Jan 2027)</span>
                         <span class="quick-chip" data-prompt="Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027 for 2 adults">🏙️ Dubai from Delhi (Mar 2027)</span>
                         <span class="quick-chip" data-prompt="Plan a trip to Mumbai from Dehradun from December 27, 2026 to December 31, 2026 for 4 adults">🌊 Mumbai from Dehradun (Dec 2026)</span>
+                        </div>
                     </div>
 
                     <div class="ws-chat-area">
@@ -129,14 +142,16 @@
                                 <span>Send</span> ➔
                             </button>
                         </div>
+                        <p class="input-hint">Connect to your travel assistant to start planning.</p>
                     </div>
-                </div>
+                </section>
             </div>
 
             <!-- Loading State -->
-            <div id="loadingArea" class="card" style="text-align:center; padding:3rem 1.5rem;">
-                <h2>Authenticating...</h2>
-                <p style="color:var(--text-muted); margin-top:8px;">Verifying your secure session, please wait.</p>
+            <div id="loadingArea" class="card loading-card">
+                <div class="loading-mark" aria-hidden="true">✈</div>
+                <h2>Getting your travel desk ready</h2>
+                <p>Verifying your secure session, please wait.</p>
             </div>
         </main>
     </div>
