@@ -69,7 +69,7 @@
             }
             sdkLoading = true;
             const script = document.createElement('script');
-            script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&intent=capture`;
+            script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD&intent=authorize`;
             script.onload = () => { sdkLoaded = true; sdkLoading = false; resolve(); };
             script.onerror = () => { sdkLoading = false; reject(new Error('PayPal SDK failed to load')); };
             document.head.appendChild(script);
@@ -327,6 +327,7 @@
 
             // Step 2: User approved in PayPal → capture on backend
             onApprove: async (data) => {
+                console.log("[PayPal] onApprove fired", data.orderID);
                 setPpStatus('⏳ Verifying payment with server... Please wait.', 'info');
                 const token = getToken();
                 try {
@@ -371,6 +372,7 @@
             },
 
             onError: (err) => {
+                console.log("[PayPal] onError fired", err);
                 console.error('[PayPal] SDK error:', err);
                 setPpStatus('❌ PayPal encountered an error. Please try again.', 'error');
                 checkoutInFlight = false;

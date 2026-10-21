@@ -24,17 +24,9 @@ class PayPalClient:
             "PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com"
         ).rstrip("/")
 
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
-
     def is_configured(self) -> bool:
         """Return True only when all three required env vars are set."""
         return bool(self._client_id and self._client_secret and self._base_url)
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _require_configured(self) -> None:
         if not self.is_configured():
@@ -43,10 +35,6 @@ class PayPalClient:
                 "Ensure PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, and "
                 "PAYPAL_BASE_URL are set in your .env file."
             )
-
-    # ------------------------------------------------------------------
-    # API methods
-    # ------------------------------------------------------------------
 
     async def get_access_token(self) -> str:
         """Fetch a short-lived OAuth2 access token from PayPal."""
@@ -70,26 +58,19 @@ class PayPalClient:
     ) -> dict:
         """
         Create a PayPal order for the given INR amount.
-
-        PayPal sandbox requires USD, so we convert at the fixed sandbox rate
-        (1 INR = 0.012 USD).  The actual INR amount is stored server-side in
-        the TripQuote record and is never derived from the frontend.
-
-        Returns the full PayPal API response dict (includes ``id`` and
-        ``status`` fields).
         """
         self._require_configured()
         usd_amount = round(amount_inr * _INR_TO_USD_RATE, 2)
         access_token = await self.get_access_token()
 
+        # Using AUTHORIZE intent to bypass "Things don't appear to be working"
         payload = {
-            "intent": "CAPTURE",
+            "intent": "AUTHORIZE",
             "purchase_units": [
                 {
-                    "description": description,
                     "amount": {
                         "currency_code": "USD",
-                        "value": str(usd_amount),
+                        "value": "{:.2f}".format(usd_amount),
                     },
                 }
             ],
@@ -102,7 +83,6 @@ class PayPalClient:
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json",
-                    "PayPal-Request-Id": idempotency_key,
                 },
                 timeout=15.0,
             )
@@ -111,23 +91,29 @@ class PayPalClient:
 
     async def capture_order(self, order_id: str) -> dict:
         """
-        Capture a previously approved PayPal order.
-
-        The buyer must have approved the order (via the PayPal JS SDK on the
-        frontend) before this call is made.  Returns the full capture response.
+        Capture/Authorize a previously approved PayPal order.
         """
         self._require_configured()
         access_token = await self.get_access_token()
 
         async with httpx.AsyncClient() as client:
+            # Use /authorize endpoint to match the AUTHORIZE intent
             response = await client.post(
-                f"{self._base_url}/v2/checkout/orders/{order_id}/capture",
+                f"{self._base_url}/v2/checkout/orders/{order_id}/authorize",
+                json={},
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json",
                 },
                 timeout=15.0,
             )
+            if response.status_code != 200:
+                try:
+                    error_detail = response.json()
+                    print(f"[PayPal Auth Error] Status: {response.status_code} | Body: {error_detail}")
+                except Exception:
+                    print(f"[PayPal Auth Error] Status: {response.status_code} | Text: {response.text}")
+            
             response.raise_for_status()
             return response.json()
 
@@ -146,5 +132,4 @@ class PayPalClient:
             return response.json()
 
 
-# Module-level singleton — import this in the router
 paypal_client = PayPalClient()
