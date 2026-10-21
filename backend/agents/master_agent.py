@@ -323,10 +323,12 @@ class MasterAgent:
                         fl.get("trip_type") == f_type
                         and f_type == ("round_trip" if tr.get("trip_type") == "round_trip" else "one_way")
                     )
+                    priced_scope_is_verified = f_type in {"round_trip", "one_way"}
 
                     if (
                         same_currency
                         and priced_scope_matches_trip
+                        and priced_scope_is_verified
                         and f_price is not None
                         and f_price > 0
                         and h_total is not None
@@ -376,6 +378,12 @@ class MasterAgent:
                                 "status": budget_status,
                                 "travelers": travelers,
                                 "comparison_amount": comparison_amount,
+                                "comparison_label": (
+                                    f"INR {comparison_amount:,.0f} per traveler "
+                                    f"({travelers} travelers)"
+                                    if comparison_budget["basis"] == "per_person"
+                                    else f"INR {comparison_amount:,.0f} for the full trip"
+                                ),
                             }
                         elif comparison_budget:
                             estimate["saved_budget_comparison"] = comparison_budget

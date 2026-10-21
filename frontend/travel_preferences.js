@@ -63,9 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const upper = amount(preference.max_amount);
         const range = lower && upper ? `${lower} – ${upper}` : lower || upper || preference.value;
         const basis = {
-            total_trip: 'total trip (all travelers combined)',
-            per_person: 'per person',
-            unspecified: 'meaning not set'
+            total_trip: 'total budget for the entire trip',
+            per_person: 'budget per traveler',
+            unspecified: 'basis needs selection'
         }[preference.budget_basis] || 'meaning not set';
         return `${range} · ${basis}`;
     }

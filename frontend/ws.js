@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isRoundTrip = transportResults.trip_type === "round_trip" || !!transportResults.return_date;
             const priceLabelText = transportResults.price_label || "Provider price scope not specified";
             const returnFareNotice = isRoundTrip
-                ? "Return-leg details are shown without a separately verified fare."
+                ? "The separately returned return-leg options below are not linked to these priced options."
                 : "This is a one-way itinerary; no return fare is included.";
 
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid var(--primary-color);">
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (transportResults.return_options && transportResults.return_options.length > 0) {
                     html += `<div style="margin-top:14px;">
                         <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                            <span>🛬 Return Leg Details (no separate fare)</span>
+                            <span>🛬 Separately returned return-leg options (not paired to priced options)</span>
                             <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.destination} → ${transportResults.origin} • ${transportResults.return_date || ''})</span>
                         </div>
                         <div style="display:flex; flex-direction:column; gap:8px;">`;
@@ -339,23 +339,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         let budgetStatusHtml = '';
                         if (budgetComparison && budgetComparison.status) {
                             const budgetLabels = {
-                                within: 'Within saved total-trip budget',
-                                above: 'Above saved total-trip budget',
-                                below: 'Below saved total-trip budget',
+                                within: 'Within selected saved budget',
+                                above: 'Exceeds selected saved budget',
+                                below: 'Below selected saved budget',
                                 not_compared_basis_unspecified: 'Budget comparison unavailable: saved budget meaning is not set',
-                                not_compared_per_person: 'Budget comparison skipped: saved budget is per person',
                                 not_compared_currency_mismatch: 'Budget comparison unavailable: currencies do not match'
                             };
+                            const basisLabel = budgetComparison.basis === 'per_person'
+                                ? `Budget per traveler (${combinedTripCost.travelers || 1} travelers)`
+                                : 'Total budget for the entire trip';
                             const minBudget = budgetComparison.min_amount;
                             const maxBudget = budgetComparison.max_amount;
                             const budgetRange = minBudget !== undefined && maxBudget !== undefined
-                                ? ` (INR ${Number(minBudget).toLocaleString()}–${Number(maxBudget).toLocaleString()})`
+                                ? ` · INR ${Number(minBudget).toLocaleString()}–${Number(maxBudget).toLocaleString()}`
                                 : minBudget !== undefined
-                                    ? ` (minimum INR ${Number(minBudget).toLocaleString()})`
+                                    ? ` · minimum INR ${Number(minBudget).toLocaleString()}`
                                     : maxBudget !== undefined
-                                        ? ` (maximum INR ${Number(maxBudget).toLocaleString()})`
+                                        ? ` · maximum INR ${Number(maxBudget).toLocaleString()}`
                                         : '';
-                            budgetStatusHtml = `<div style="margin-top:6px;"><strong>${escapeHtml(budgetLabels[budgetComparison.status] || 'Saved budget not compared')}${budgetRange}</strong></div>`;
+                            const comparedAmount = budgetComparison.comparison_label
+                                ? ` · compared ${escapeHtml(budgetComparison.comparison_label)}`
+                                : '';
+                            budgetStatusHtml = `<div style="margin-top:6px;"><strong>${escapeHtml(basisLabel)}: ${escapeHtml(budgetLabels[budgetComparison.status] || 'not compared')}${budgetRange}${comparedAmount}</strong></div>`;
                         }
                         // Embed a sentinel div with a data-combo-idx for PayPal button mounting
                         const comboIdx = checkoutCombos.length;
