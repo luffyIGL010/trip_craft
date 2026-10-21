@@ -99,6 +99,31 @@ class PreferenceApiTests(unittest.TestCase):
             self.client.get("/api/preferences").json()["preferences"],
             [],
         )
+        self.assertEqual(
+            self.client.delete(f"/api/preferences/{preference_id}").status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.put(
+                f"/api/preferences/{preference_id}",
+                json={"category": "accommodation", "value": "luxury"},
+            ).status_code,
+            404,
+        )
+
+        self.current_user = self.user
+        self.assertEqual(
+            self.client.delete(f"/api/preferences/{preference_id}").status_code,
+            204,
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/preferences/{interest_id}").status_code,
+            204,
+        )
+        self.assertEqual(
+            self.client.get("/api/preferences").json()["preferences"],
+            [],
+        )
 
     def test_selected_budget_basis_persists_reaches_master_and_compares(self):
         created = self.client.post(
@@ -172,31 +197,6 @@ class PreferenceApiTests(unittest.TestCase):
             "total budget for the entire trip" in preference
             for preference in result["plan"]["preferences"]
         ))
-        self.assertEqual(
-            self.client.delete(f"/api/preferences/{preference_id}").status_code,
-            404,
-        )
-        self.assertEqual(
-            self.client.put(
-                f"/api/preferences/{preference_id}",
-                json={"category": "accommodation", "value": "luxury"},
-            ).status_code,
-            404,
-        )
-
-        self.current_user = self.user
-        self.assertEqual(
-            self.client.delete(f"/api/preferences/{preference_id}").status_code,
-            204,
-        )
-        self.assertEqual(
-            self.client.delete(f"/api/preferences/{interest_id}").status_code,
-            204,
-        )
-        self.assertEqual(
-            self.client.get("/api/preferences").json()["preferences"],
-            [],
-        )
 
     def test_budget_validation_and_profile_clear(self):
         invalid = self.client.post(
@@ -697,6 +697,65 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             result["combined_trip_cost"]["estimates"][0]["combined_total"],
             35000,
         )
+
+    async def test_equal_prices_do_not_deduplicate_distinct_itineraries_or_hotels(self):
+        agent = MasterAgent()
+        agent.client = None
+        flights = [
+            TransportOption(
+                provider="Air",
+                departure="out",
+                arrival="in",
+                duration="2h",
+                stops=0,
+                price=10000,
+                currency="INR",
+                trip_type="round_trip",
+                outbound_leg=FlightLeg(
+                    provider="Air",
+                    flight_number=flight_number,
+                    departure_airport="DEL",
+                    departure_time=departure_time,
+                    arrival_airport="GOI",
+                    arrival_time="2027-03-15T10:00",
+                ),
+            )
+            for flight_number, departure_time in (
+                ("AB 123", "2027-03-15T08:00"),
+                ("CD 456", "2027-03-15T09:00"),
+            )
+        ]
+        hotels = [
+            HotelOption(
+                name=name,
+                city="Goa",
+                total_price=20000,
+                currency="INR",
+            )
+            for name in ("Palm Stay", "Coastal Stay")
+        ]
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=flights,
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=hotels,
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Goa from Delhi from March 15, 2027 to March 20, 2027 for 2 adults"
+        )
+
+        estimates = result["combined_trip_cost"]["estimates"]
+        self.assertEqual(len(estimates), 4)
+        self.assertEqual({item["combined_total"] for item in estimates}, {30000})
+        self.assertEqual(len({
+            (item["flight_option_id"], item["hotel_option_id"])
+            for item in estimates
+        }), 4)
 
 
 class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
