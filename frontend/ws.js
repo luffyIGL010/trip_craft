@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (plan.preferences && plan.preferences.length > 0) {
             html += `<div class="plan-section">
                 <strong>🎯 Preferences:</strong>
-                <ul>${plan.preferences.map(p => `<li>${p}</li>`).join('')}</ul>
+                <ul>${plan.preferences.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
             </div>`;
         }
 

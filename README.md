@@ -110,5 +110,21 @@ Open `frontend/index.html` in your browser.
 
 - Specialized agents (Travel, Hotel, Budget, Activity, Weather, Itinerary)
 - Real API calls for flights, hotels, weather, maps
-- Long-term AI memory (Redis, Vector DBs)
+- Conversation-history memory (Redis or a vector database)
 - Production deployment
+
+## Persistent Travel Preferences
+
+The dashboard includes a per-user travel preference profile for destinations, budget ranges, accommodation style, interests, transportation, trip pace, dietary preferences, and accessibility requirements. Users can view, add, edit, delete, or clear their profile from the **Travel Preferences** section.
+
+Preferences are stored in the existing SQLite database in a `travel_preferences` table. The existing `Base.metadata.create_all()` startup step creates this new table without deleting or recreating existing tables. Start the backend from `backend/` as usual so it continues using `backend/travelagent.db`.
+
+The authenticated API is under `/api/preferences`:
+
+- `GET /api/preferences` lists the signed-in user's preferences.
+- `POST /api/preferences` creates or updates a preference.
+- `PUT /api/preferences/{preference_id}` updates an owned preference.
+- `DELETE /api/preferences/{preference_id}` deletes an owned preference.
+- `DELETE /api/preferences` clears the signed-in user's profile.
+
+The chat workflow saves only recognized, explicitly recurring preferences (for example, “I usually prefer budget hotels and historical places”). Saved preferences are suggestions: current-trip accommodation instructions take precedence, and actual search results and prices are not fabricated. Activity and itinerary agents are not implemented yet, so interests and pace are currently passed through as planning context rather than generating those recommendations.

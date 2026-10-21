@@ -48,3 +48,18 @@ class Payment(Base):
     description = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class TravelPreference(Base):
+    """A user-controlled, persistent travel preference."""
+    __tablename__ = "travel_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String, nullable=False, index=True)
+    value = Column(String, nullable=False, default="")
+    min_amount = Column(Float, nullable=True)
+    max_amount = Column(Float, nullable=True)
+    currency = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

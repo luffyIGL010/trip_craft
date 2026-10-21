@@ -36,6 +36,56 @@
                     <div id="statusArea" class="status-box hidden"></div>
                 </div>
 
+                <section class="card" aria-labelledby="travelPreferencesTitle">
+                    <div class="preferences-header">
+                        <div>
+                            <h2 id="travelPreferencesTitle">Travel Preferences</h2>
+                            <p class="subtitle">Save recurring preferences to personalize future trip plans. You can edit or clear them anytime.</p>
+                        </div>
+                        <button id="clearPreferencesBtn" class="danger" type="button">Clear profile</button>
+                    </div>
+                    <div id="preferenceStatus" class="status-box hidden" role="status" aria-live="polite"></div>
+                    <form id="preferenceForm" class="preferences-form">
+                        <div class="form-group">
+                            <label for="preferenceCategory">Preference type</label>
+                            <select id="preferenceCategory" required>
+                                <option value="destination">Destination or region</option>
+                                <option value="budget">Usual budget range</option>
+                                <option value="accommodation">Accommodation style</option>
+                                <option value="interest">Interest</option>
+                                <option value="transport">Transportation</option>
+                                <option value="pace">Trip pace</option>
+                                <option value="dietary">Dietary preference</option>
+                                <option value="accessibility">Accessibility requirement</option>
+                            </select>
+                        </div>
+                        <div id="preferenceValueGroup" class="form-group">
+                            <label for="preferenceValue">Preference</label>
+                            <input id="preferenceValue" type="text" maxlength="300" placeholder="e.g. budget, relaxed, nature" required>
+                        </div>
+                        <div id="preferenceBudgetFields" class="preferences-budget hidden">
+                            <div class="form-group">
+                                <label for="preferenceMin">Minimum</label>
+                                <input id="preferenceMin" type="number" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="preferenceMax">Maximum</label>
+                                <input id="preferenceMax" type="number" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="preferenceCurrency">Currency</label>
+                                <input id="preferenceCurrency" type="text" maxlength="3" value="INR">
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <button id="savePreferenceBtn" type="submit">Save preference</button>
+                            <button id="cancelPreferenceEditBtn" class="secondary hidden" type="button">Cancel edit</button>
+                        </div>
+                    </form>
+                    <p id="emptyPreferences" class="preferences-empty">No saved preferences yet.</p>
+                    <ul id="travelPreferencesList" class="preferences-list"></ul>
+                </section>
+
                 <!-- Master Agent Chat UI -->
                 <div class="card">
                     <div class="ws-controls-wrapper">
@@ -84,6 +134,7 @@
     </div>
     
     <script src="auth.js"></script>
+    <script src="travel_preferences.js"></script>
     <script src="script.js"></script>
     <script src="ws.js"></script>
     <script src="checkout.js"></script>

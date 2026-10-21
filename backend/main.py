@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth.auth import router as auth_router
 from websocket import router as ws_router
+from preferences.router import router as preferences_router
 from database.database import engine, Base
 
 # Create database tables upon startup
@@ -28,6 +29,7 @@ app.add_middleware(
 
 # Include Authentication Routes
 app.include_router(auth_router)
+app.include_router(preferences_router)
 
 # Include WebSocket Routes
 app.include_router(ws_router)

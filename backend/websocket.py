@@ -1,6 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 
@@ -8,6 +9,11 @@ from database.database import get_db
 from database.models import User
 from auth.auth import SECRET_KEY, ALGORITHM
 from agents.master_agent import MasterAgent
+from preferences.service import (
+    extract_explicit_preferences,
+    list_preferences,
+    upsert_preference,
+)
 
 # Setup logging for development
 logging.basicConfig(level=logging.INFO)
@@ -72,7 +78,7 @@ async def websocket_endpoint(
                     await websocket.send_json({"error": "Please enter a travel request."})
                     continue
                 
-                logger.info(f"User {user.id} request: {user_message}")
+                logger.info("User %s submitted a travel request.", user.id)
                 
                 try:
                     # Provide an async callback for status updates
@@ -83,8 +89,38 @@ async def websocket_endpoint(
                             "status": status
                         })
                     
-                    # Call the Master Agent orchestrator (which delegates to Travel Agent)
-                    result_data = await master_agent.process_request(user_message, status_callback=send_status)
+                    try:
+                        for preference in extract_explicit_preferences(user_message):
+                            upsert_preference(
+                                db,
+                                user.id,
+                                **preference,
+                                replace_single_value=False,
+                            )
+                        db.commit()
+                        saved_preferences = [
+                            {
+                                "category": preference.category,
+                                "value": preference.value,
+                                "min_amount": preference.min_amount,
+                                "max_amount": preference.max_amount,
+                                "currency": preference.currency,
+                            }
+                            for preference in list_preferences(db, user.id)
+                        ]
+                    except SQLAlchemyError:
+                        db.rollback()
+                        logger.warning(
+                            "Travel preference memory is unavailable for this request."
+                        )
+                        saved_preferences = []
+
+                    # Call the Master Agent with only this user's saved travel preferences.
+                    result_data = await master_agent.process_request(
+                        user_message,
+                        status_callback=send_status,
+                        saved_preferences=saved_preferences,
+                    )
                     
                     # Return the structured plan and transport results
                     await websocket.send_json({

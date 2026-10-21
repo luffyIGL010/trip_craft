@@ -6,6 +6,11 @@ from datetime import datetime
 from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
 from .hotel_agent import HotelAgent
+from preferences.service import (
+    accommodation_preference_from_request,
+    explicit_categories_in_request,
+    preference_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +55,14 @@ class MasterAgent:
         self.travel_agent = TravelAgent()
         self.hotel_agent = HotelAgent()
 
-    async def process_request(self, user_message: str, status_callback=None) -> dict:
+    async def process_request(
+        self,
+        user_message: str,
+        status_callback=None,
+        saved_preferences: list[dict] | None = None,
+    ) -> dict:
         """Main entry point: analyze a user's travel request and return a structured plan with delegated results."""
-        logger.info(f"Master Agent received request: {user_message}")
+        logger.info("Master Agent received a travel request.")
 
         if not user_message or not user_message.strip():
             raise ValueError("Empty message. Please describe your travel plans.")
@@ -64,6 +74,17 @@ class MasterAgent:
             plan = self._call_llm(user_message)
         else:
             plan = self._mock_response(user_message)
+
+        current_categories = explicit_categories_in_request(user_message)
+        applicable_preferences = [
+            preference
+            for preference in (saved_preferences or [])
+            if preference.get("category") not in current_categories
+        ]
+        for preference in applicable_preferences:
+            plan.preferences.append(
+                f"Saved travel preference — {preference_label(preference)}"
+            )
             
         response_data = {
             "plan": plan.model_dump(),
@@ -89,6 +110,52 @@ class MasterAgent:
                 await status_callback("hotel_agent", "searching_hotels")
 
             hotel_result = await self.hotel_agent.execute(plan)
+            accommodation_style = accommodation_preference_from_request(user_message)
+            if accommodation_style is None:
+                accommodation_style = next(
+                    (
+                        preference.get("value", "").lower()
+                        for preference in applicable_preferences
+                        if preference.get("category") == "accommodation"
+                    ),
+                    None,
+                )
+            if accommodation_style and hotel_result.status == "success":
+                if accommodation_style == "luxury":
+                    rated_options = [
+                        option for option in hotel_result.options
+                        if not option.is_fixture_price and option.star_rating is not None
+                    ]
+                    if rated_options:
+                        hotel_result.options.sort(
+                            key=lambda option: (
+                                option.star_rating is None or option.is_fixture_price,
+                                -(option.star_rating or 0),
+                                -(option.guest_rating or 0),
+                            )
+                        )
+                else:
+                    priced_options = [
+                        option for option in hotel_result.options
+                        if not option.is_fixture_price
+                        and (option.total_price or option.nightly_price) is not None
+                    ]
+                    if priced_options:
+                        prices = [
+                            option.total_price or option.nightly_price
+                            for option in priced_options
+                        ]
+                        midpoint = sorted(prices)[len(prices) // 2]
+
+                        def hotel_preference_key(option):
+                            price = option.total_price or option.nightly_price
+                            if price is None or option.is_fixture_price:
+                                return (1, 0)
+                            if accommodation_style == "budget":
+                                return (0, price)
+                            return (0, abs(price - midpoint))
+
+                        hotel_result.options.sort(key=hotel_preference_key)
             response_data["hotel_results"] = hotel_result.model_dump()
 
             if status_callback:
