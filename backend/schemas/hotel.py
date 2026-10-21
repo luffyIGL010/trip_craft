@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class HotelOption(BaseModel):
+    option_id: Optional[str] = None
     name: str
     platform: Optional[str] = None  # "google", "booking", "airbnb", "vrbo"
     property_type: Optional[str] = "hotel"

@@ -26,6 +26,9 @@ def _normalized_identity(value):
 
 
 def _flight_identity(option, fallback_index):
+    option_id = _normalized_identity(_field(option, "option_id"))
+    if option_id:
+        return ("provider-id", option_id)
     outbound = _field(option, "outbound_leg")
     returning = _field(option, "return_leg")
     components = [
@@ -51,6 +54,9 @@ def _flight_identity(option, fallback_index):
 
 
 def _hotel_identity(option, fallback_index):
+    option_id = _normalized_identity(_field(option, "option_id"))
+    if option_id:
+        return ("provider-id", option_id)
     url = _normalized_identity(_field(option, "url"))
     if url:
         return ("url", url)
@@ -268,6 +274,17 @@ class MasterAgent:
                         "min_amount": saved_budget.get("min_amount"),
                         "max_amount": saved_budget.get("max_amount"),
                         "currency": "INR",
+                        "basis": "total_trip",
+                    }
+                else:
+                    comparison_budget = {"status": "not_compared_currency_mismatch"}
+            elif saved_budget and saved_budget.get("budget_basis") == "per_person":
+                if (saved_budget.get("currency") or "").upper() == "INR":
+                    comparison_budget = {
+                        "min_amount": saved_budget.get("min_amount"),
+                        "max_amount": saved_budget.get("max_amount"),
+                        "currency": "INR",
+                        "basis": "per_person",
                     }
                 else:
                     comparison_budget = {"status": "not_compared_currency_mismatch"}
@@ -302,9 +319,14 @@ class MasterAgent:
                         == (ht.get("currency") or "").upper()
                         == "INR"
                     )
+                    priced_scope_matches_trip = (
+                        fl.get("trip_type") == f_type
+                        and f_type == ("round_trip" if tr.get("trip_type") == "round_trip" else "one_way")
+                    )
 
                     if (
                         same_currency
+                        and priced_scope_matches_trip
                         and f_price is not None
                         and f_price > 0
                         and h_total is not None
@@ -315,11 +337,8 @@ class MasterAgent:
                             "flight_option": f"Option {f_idx + 1} ({f_provider})",
                             "flight_option_id": repr(combination_id[0]),
                             "flight_price": float(f_price),
-                            "flight_scope": fl.get("price_label") or (
-                                f"Provider itinerary price for {travelers} traveler"
-                                f"{'s' if travelers > 1 else ''} "
-                                f"({'round trip' if f_type == 'round_trip' else 'one way'})"
-                            ),
+                            "flight_scope": fl.get("price_label")
+                            or "Provider price; trip scope unspecified",
                             "hotel_option": f"Option {h_idx + 1} ({h_name})",
                             "hotel_option_id": repr(combination_id[1]),
                             "hotel_total": float(h_total),
@@ -339,17 +358,24 @@ class MasterAgent:
                             "status": "available"
                         }
                         if comparison_budget and "status" not in comparison_budget:
+                            comparison_amount = (
+                                comb_total / travelers
+                                if comparison_budget["basis"] == "per_person"
+                                else comb_total
+                            )
                             minimum = comparison_budget["min_amount"]
                             maximum = comparison_budget["max_amount"]
-                            if maximum is not None and comb_total > maximum:
+                            if maximum is not None and comparison_amount > maximum:
                                 budget_status = "above"
-                            elif minimum is not None and comb_total < minimum:
+                            elif minimum is not None and comparison_amount < minimum:
                                 budget_status = "below"
                             else:
                                 budget_status = "within"
                             estimate["saved_budget_comparison"] = {
                                 **comparison_budget,
                                 "status": budget_status,
+                                "travelers": travelers,
+                                "comparison_amount": comparison_amount,
                             }
                         elif comparison_budget:
                             estimate["saved_budget_comparison"] = comparison_budget

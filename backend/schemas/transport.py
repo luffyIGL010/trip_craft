@@ -13,6 +13,7 @@ class FlightLeg(BaseModel):
     airplane: Optional[str] = None
 
 class TransportOption(BaseModel):
+    option_id: Optional[str] = None
     provider: str
     departure: str
     arrival: str

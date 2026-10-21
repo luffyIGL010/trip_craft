@@ -260,6 +260,14 @@ class HotelAgent:
                     price_label = "Price on request"
 
                 options.append(HotelOption(
+                    option_id=next(
+                        (
+                            str(prop[key])
+                            for key in ("property_token", "property_id", "hotel_id", "id")
+                            if prop.get(key) is not None
+                        ),
+                        None,
+                    ),
                     name=name,
                     platform=platform,
                     property_type=prop_type,

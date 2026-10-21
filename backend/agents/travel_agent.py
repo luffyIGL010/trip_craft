@@ -214,14 +214,7 @@ class TravelAgent:
                 travelers=travelers
             )
             
-            # The search request includes the passenger count and, for round trips,
-            # the return date. The provider's itinerary price is shown as returned.
-            trip_label = "round trip" if is_round_trip else "one way"
             price_source = "Mock" if api_response.get("is_mock", False) else "Provider"
-            price_label = (
-                f"{price_source} itinerary price for {travelers} traveler"
-                f"{'s' if travelers != 1 else ''} ({trip_label})"
-            )
 
             # 4. Parse and normalize outbound flights
             options = []
@@ -231,6 +224,25 @@ class TravelAgent:
 
             for f in raw_flights[:5]: # Limit to top 5 options
                 airline = extract_airline(f)
+                provider_type = str(f.get("type") or "").strip().casefold()
+                if provider_type in {"round trip", "round-trip", "roundtrip"}:
+                    option_trip_type = "round_trip"
+                elif provider_type in {"one way", "one-way", "oneway"}:
+                    option_trip_type = "one_way"
+                else:
+                    option_trip_type = None
+                if option_trip_type:
+                    option_price_label = (
+                        f"{price_source} itinerary price for search requested with "
+                        f"{travelers} traveler{'s' if travelers != 1 else ''} "
+                        f"({option_trip_type.replace('_', ' ')})"
+                    )
+                else:
+                    option_price_label = (
+                        f"{price_source} price for search requested with "
+                        f"{travelers} traveler{'s' if travelers != 1 else ''}; "
+                        "trip scope unspecified"
+                    )
                 try:
                     price = float(f["price"])
                     if not math.isfinite(price) or price <= 0:
@@ -247,6 +259,11 @@ class TravelAgent:
                 outbound_leg = build_leg(f)
 
                 options.append(TransportOption(
+                    option_id=(
+                        str(f.get("departure_token") or f.get("flight_id") or f.get("id"))
+                        if f.get("departure_token") or f.get("flight_id") or f.get("id")
+                        else None
+                    ),
                     provider=airline,
                     departure=departure_time,
                     arrival=arrival_time,
@@ -255,8 +272,8 @@ class TravelAgent:
                     price=price,
                     currency="INR",
                     price_type="total",
-                    price_label=price_label,
-                    trip_type="round_trip" if is_round_trip else "one_way",
+                    price_label=option_price_label,
+                    trip_type=option_trip_type,
                     outbound_leg=outbound_leg,
                     return_leg=None
                 ))
@@ -295,10 +312,6 @@ class TravelAgent:
                         return_leg=None
                     ))
 
-                # Pair top return leg with top outbound option if available
-                if options and return_options:
-                    options[0].return_leg = return_options[0].outbound_leg
-
             if not options:
                 return TransportResult(
                     status="error",
@@ -316,7 +329,11 @@ class TravelAgent:
                 return_date=return_date,
                 travelers=travelers,
                 price_type="total",
-                price_label=price_label,
+                price_label=(
+                    f"{price_source} prices from a search requested with "
+                    f"{travelers} traveler{'s' if travelers != 1 else ''}; "
+                    "trip scope is reported per option when available"
+                ),
                 options=options,
                 return_options=return_options,
                 is_mock=api_response.get("is_mock", False)
