@@ -217,6 +217,32 @@ class ReplanningService:
         candidate_conflicts = cls.detect_conflicts(candidate, saved_preferences)
         changes = cls._describe_changes(original, candidate, message)
         alternatives = cls._budget_alternatives(candidate, saved_preferences or [])
+        if (
+            any(item["code"] == "budget_exceeded" for item in conflicts)
+            and alternatives
+        ):
+            recommended = alternatives[0]
+            old_total = cls._lowest_verified_total(original)
+            new_total = recommended.get("combined_total")
+            changes.append({
+                "field": "flight_hotel_recommendation",
+                "original": "No verified available combination within the saved budget.",
+                "proposed": {
+                    "flight_option": recommended.get("flight_option"),
+                    "hotel_option": recommended.get("hotel_option"),
+                    "combined_total": new_total,
+                    "currency": recommended.get("currency"),
+                    "confidence": recommended.get("confidence"),
+                },
+                "reason": "This available search combination fits the saved budget.",
+                "price_difference": (
+                    new_total - old_total
+                    if old_total is not None and new_total is not None
+                    else None
+                ),
+                "currency": "INR",
+                "notice": "Recommendation only; neither option is selected or booked.",
+            })
         unresolved = candidate_conflicts
 
         if conflicts and not changes:
@@ -372,6 +398,7 @@ class ReplanningService:
         candidate: dict,
         analysis: dict,
         response: dict,
+        status: str = "pending",
     ) -> TripPlanChange:
         proposal = TripPlanChange(
             trip_id=trip.id,
@@ -381,9 +408,8 @@ class ReplanningService:
             proposed_json=json.dumps(candidate),
             response_json=json.dumps(response),
             changes_json=json.dumps(analysis),
-            status="pending",
+            status=status,
         )
-        trip.replan_attempts += 1
         db.add(proposal)
         db.commit()
         db.refresh(proposal)
