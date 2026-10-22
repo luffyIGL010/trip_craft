@@ -2,7 +2,7 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -24,6 +24,29 @@ from agents.travel_agent import TravelAgent
 from agents.schemas import Budget, Dates, MasterAgentResponse
 from schemas.hotel import HotelOption, HotelResult
 from schemas.transport import FlightLeg, TransportOption, TransportResult
+
+_weather_service_patcher = None
+
+
+def setUpModule():
+    global _weather_service_patcher
+    _weather_service_patcher = patch("agents.master_agent.OpenMeteoWeatherService")
+    weather_service = _weather_service_patcher.start().return_value
+    weather_service.get_trip_weather = AsyncMock(return_value={
+        "status": "unavailable",
+        "destination": None,
+        "location": None,
+        "timezone": None,
+        "current": None,
+        "days": [],
+        "message": "Weather is not available in this test.",
+        "source": "Open-Meteo",
+    })
+
+
+def tearDownModule():
+    if _weather_service_patcher:
+        _weather_service_patcher.stop()
 
 
 class PreferenceApiTests(unittest.TestCase):

@@ -224,6 +224,7 @@ class MasterAgent:
             bool(plan.destination and plan.dates and plan.dates.start and plan.tasks)
             or wants_itinerary
             or wants_weather
+            or "check_weather" in plan.tasks
         )
         if should_fetch_weather and "check_weather" not in plan.tasks:
             plan.tasks.append("check_weather")
