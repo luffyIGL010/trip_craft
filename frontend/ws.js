@@ -733,6 +733,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         appendMessage('🏨 Hotel Agent', '<em>Searching accommodation options...</em>');
                     } else if (data.agent === 'hotel_agent' && data.status === 'completed') {
                         appendMessage('🏨 Hotel Agent', '<em>Hotel search completed.</em>');
+                    } else if (data.agent === 'weather_service' && data.status === 'loading') {
+                        appendMessage('🌦️ Weather', '<em>Checking destination location and forecast...</em>');
+                    } else if (data.agent === 'weather_service' && data.status === 'completed') {
+                        appendMessage('🌦️ Weather', '<em>Destination forecast is ready.</em>');
+                    } else if (data.agent === 'weather_service' && data.status === 'unavailable') {
+                        appendMessage('🌦️ Weather', '<em>Forecast unavailable; trip planning will continue.</em>');
                     } else if (data.agent === 'itinerary_agent' && data.status === 'generating') {
                         appendMessage('🗓️ Itinerary Agent', '<em>Creating your day-by-day suggestions...</em>');
                     } else if (data.agent === 'itinerary_agent' && data.status === 'success') {

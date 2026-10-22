@@ -380,6 +380,8 @@ class MasterAgent:
             response_data["hotel_results"] = previous_hotels
 
         if wants_itinerary or wants_weather or "check_weather" in plan.tasks:
+            if status_callback:
+                await status_callback("weather_service", "loading")
             try:
                 response_data["weather_results"] = await self.weather_service.get_trip_weather(
                     destination=plan.destination,
@@ -401,6 +403,14 @@ class MasterAgent:
                     ),
                     "source": "Open-Meteo",
                 }
+            if status_callback:
+                weather_status = response_data["weather_results"].get("status")
+                await status_callback(
+                    "weather_service",
+                    "completed"
+                    if weather_status in {"success", "partial"}
+                    else "unavailable",
+                )
 
         if wants_itinerary:
             if status_callback:
