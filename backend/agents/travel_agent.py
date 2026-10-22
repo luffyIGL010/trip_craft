@@ -69,7 +69,9 @@ def build_leg(flight_data: dict) -> FlightLeg:
     )
 
 
-def _has_round_trip_route(flight_data: dict, origin: str, destination: str) -> bool:
+def _round_trip_split_index(
+    flight_data: dict, origin: str, destination: str
+) -> Optional[int]:
     flights = flight_data.get("flights") or []
     for split_index in range(1, len(flights)):
         outbound = flights[:split_index]
@@ -91,8 +93,8 @@ def _has_round_trip_route(flight_data: dict, origin: str, destination: str) -> b
                 for left, right in zip(returning, returning[1:])
             )
             if outbound_connects and return_connects:
-                return True
-    return False
+                return split_index
+    return None
 
 
 # Recognized ambiguous states and regions that are not specific commercial airports
@@ -252,10 +254,12 @@ class TravelAgent:
             for f in raw_flights[:5]: # Limit to top 5 options
                 airline = extract_airline(f)
                 provider_type = str(f.get("type") or "").strip().casefold()
-                if (
-                    provider_type in {"round trip", "round-trip", "roundtrip"}
-                    and _has_round_trip_route(f, origin_code, dest_code)
-                ):
+                trip_split_index = (
+                    _round_trip_split_index(f, origin_code, dest_code)
+                    if provider_type in {"round trip", "round-trip", "roundtrip"}
+                    else None
+                )
+                if trip_split_index is not None:
                     option_trip_type = "round_trip"
                 elif provider_type in {"one way", "one-way", "oneway"}:
                     option_trip_type = "one_way"
@@ -298,10 +302,37 @@ class TravelAgent:
                 duration_str = f"{duration_mins // 60}h {duration_mins % 60}m" if duration_mins else "Unknown"
                 
                 flights_list = f.get("flights", [])
+                outbound_flights = (
+                    flights_list[:trip_split_index]
+                    if trip_split_index is not None
+                    else flights_list
+                )
                 departure_time = flights_list[0].get("departure_airport", {}).get("time", "TBD") if flights_list else "TBD"
-                arrival_time = flights_list[-1].get("arrival_airport", {}).get("time", "TBD") if flights_list else "TBD"
-                
-                outbound_leg = build_leg(f)
+                arrival_time = outbound_flights[-1].get("arrival_airport", {}).get("time", "TBD") if outbound_flights else "TBD"
+
+                outbound_duration = sum(
+                    segment.get("duration", 0)
+                    for segment in outbound_flights
+                    if isinstance(segment.get("duration", 0), (int, float))
+                )
+                outbound_leg = build_leg({
+                    **f,
+                    "flights": outbound_flights,
+                    "total_duration": outbound_duration or f.get("total_duration"),
+                })
+                return_leg = None
+                if trip_split_index is not None:
+                    returning_flights = flights_list[trip_split_index:]
+                    return_duration = sum(
+                        segment.get("duration", 0)
+                        for segment in returning_flights
+                        if isinstance(segment.get("duration", 0), (int, float))
+                    )
+                    return_leg = build_leg({
+                        **f,
+                        "flights": returning_flights,
+                        "total_duration": return_duration or f.get("total_duration"),
+                    })
 
                 options.append(TransportOption(
                     option_id=(
@@ -321,7 +352,7 @@ class TravelAgent:
                     price_label=option_price_label,
                     trip_type=option_trip_type,
                     outbound_leg=outbound_leg,
-                    return_leg=None
+                    return_leg=return_leg
                 ))
 
             # 5. Parse return flight options if round-trip and available
