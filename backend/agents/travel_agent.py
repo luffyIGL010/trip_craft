@@ -282,9 +282,10 @@ class TravelAgent:
                     )
                 elif provider_type in {"round trip", "round-trip", "roundtrip"}:
                     option_price_label = (
-                        f"Outbound leg details only; provider fare itinerary scope "
-                        f"unverified; return fare not included or verified; traveler "
-                        f"price basis unverified (search requested with {traveler_count})"
+                        f"{price_source}-reported fare; outbound leg details only; "
+                        f"fare itinerary scope unverified; return fare not included "
+                        f"or verified; traveler price basis unverified "
+                        f"(search requested with {traveler_count})"
                     )
                 else:
                     option_price_label = (

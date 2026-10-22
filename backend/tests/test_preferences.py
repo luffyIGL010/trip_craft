@@ -879,7 +879,7 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result.options[0].trip_type)
         self.assertIsNone(result.options[1].trip_type)
         self.assertIn("itinerary and traveler price scopes unverified", result.options[1].price_label)
-        self.assertIn("Outbound leg details only", result.options[0].price_label)
+        self.assertIn("outbound leg details only", result.options[0].price_label.lower())
         self.assertIn("itinerary scope unverified", result.options[0].price_label)
         self.assertIn("return fare not included or verified", result.options[0].price_label)
         self.assertEqual(result.options[0].price_scope, "unverified")
