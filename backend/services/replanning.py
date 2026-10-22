@@ -165,6 +165,42 @@ class ReplanningService:
                     })
                     return
 
+        outbound_id = _field(options[0], "option_id")
+        return_leg = _field(options[0], "return_leg")
+        if return_leg is None:
+            paired_return = next(
+                (
+                    option for option in transport.get("return_options", []) or []
+                    if _field(option, "paired_outbound_option_id") == outbound_id
+                ),
+                None,
+            )
+            return_leg = _field(paired_return, "outbound_leg")
+        departure_raw = _field(return_leg, "departure_time")
+        try:
+            departure = datetime.fromisoformat(str(departure_raw).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            departure = None
+        if departure is None:
+            return
+        departure_minutes = departure.hour * 60 + departure.minute
+        departure_date = departure.date().isoformat()
+        for day in itinerary.get("days") or []:
+            if day.get("date") != departure_date:
+                continue
+            for activity in day.get("activities") or []:
+                end = _parse_time(activity.get("end_time"))
+                if end is not None and end > departure_minutes:
+                    conflicts.append({
+                        "code": "activity_after_departure",
+                        "date": departure_date,
+                        "message": (
+                            f"'{activity.get('title', 'An activity')}' ends after the "
+                            "available return flight's departure time."
+                        ),
+                    })
+                    return
+
     @staticmethod
     def _detect_budget_conflict(state, saved_preferences, conflicts):
         preference = ReplanningService._budget_for_state(state, saved_preferences)
