@@ -473,8 +473,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const alternatives = replanning.alternatives || [];
             const needsApproval = replanning.status === 'awaiting_approval'
                 && Number.isInteger(replanning.proposal_id);
+            const statusLabels = {
+                awaiting_approval: 'Awaiting approval',
+                conflicts_detected: 'Conflicts detected',
+                unresolved: 'Unresolved',
+                no_change: 'No changes proposed',
+                not_needed: 'No conflict detected',
+                attempt_limit_reached: 'Attempt limit reached'
+            };
             html += `<div class="plan-result" style="margin-top:15px; border-left:4px solid #d97706;">
-                <h4 style="margin:0; color:#92400e;">🔄 Trip re-planning</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4 style="margin:0; color:#92400e;">🔄 Trip re-planning</h4>
+                    <span class="replan-status" data-proposal-id="${Number.isInteger(replanning.proposal_id) ? replanning.proposal_id : ''}" style="font-size:0.78rem; font-weight:600; color:#92400e;">${escapeHtml(statusLabels[replanning.status] || replanning.status || 'Status unavailable')}</span>
+                </div>
                 <p style="font-size:0.9rem; color:#475569;">${escapeHtml(replanning.message || '')}</p>
                 ${conflicts.length ? `<div><strong>Detected issues</strong><ul>${conflicts.map(issue => `<li>${escapeHtml(issue.message || issue.code || 'Planning conflict')}</li>`).join('')}</ul></div>` : ''}
                 ${changes.length ? `<div><strong>${needsApproval ? 'Proposed changes' : 'Changes'}</strong><ul>${changes.map(change => {
@@ -595,6 +606,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         data.data.trip_id
                     );
                 } else if (data.type === 'replan_decision') {
+                    const statusElement = messagesContainer.querySelector(
+                        `.replan-status[data-proposal-id="${Number(data.data.proposal_id)}"]`
+                    );
+                    if (statusElement) {
+                        statusElement.textContent = data.data.status === 'approved'
+                            ? 'Applied to saved plan (not booked)'
+                            : 'Rejected; saved plan unchanged';
+                    }
                     appendMessage('System', escapeHtml(data.data.message || `Proposal ${data.data.status}.`));
                 } else if (data.type === 'replanning') {
                     appendMessage('System', escapeHtml(data.data.message || 'Re-planning could not continue.'));

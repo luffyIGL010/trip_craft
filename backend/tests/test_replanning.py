@@ -400,12 +400,16 @@ class ReplanningWebSocketTests(unittest.TestCase):
         candidate = _state(dates={"start": "2027-06-01", "end": "2027-06-03"})
         agent = AsyncMock()
         agent.process_request = AsyncMock(side_effect=[original, candidate])
-        with patch.dict(os.environ, {"JWT_SECRET_KEY": "test-replanning-key"}):
+        test_environment = {
+            "JWT_SECRET_KEY": "test-replanning-key",
+            "TRIP_REPLAN_MAX_ATTEMPTS": "1",
+        }
+        with patch.dict(os.environ, test_environment):
             token = create_access_token({"sub": user.email})
 
         try:
             with patch("websocket.master_agent", agent):
-                with patch.dict(os.environ, {"JWT_SECRET_KEY": "test-replanning-key"}):
+                with patch.dict(os.environ, test_environment):
                     with TestClient(app) as client:
                         with client.websocket_connect(
                             "/ws",
@@ -426,6 +430,18 @@ class ReplanningWebSocketTests(unittest.TestCase):
                             self.assertEqual(proposed["replanning"]["status"], "awaiting_approval")
 
                             websocket.send_json({
+                                "type": "message",
+                                "trip_id": trip_id,
+                                "message": "Change my dates",
+                            })
+                            repeated = websocket.receive_json()["data"]
+                            self.assertEqual(
+                                repeated["replanning"]["proposal_id"],
+                                proposal_id,
+                            )
+                            self.assertEqual(agent.process_request.await_count, 2)
+
+                            websocket.send_json({
                                 "type": "replan_decision",
                                 "proposal_id": proposal_id,
                                 "decision": "approve",
@@ -433,6 +449,18 @@ class ReplanningWebSocketTests(unittest.TestCase):
                             decision = websocket.receive_json()
                             self.assertEqual(decision["type"], "replan_decision")
                             self.assertEqual(decision["data"]["status"], "approved")
+
+                            websocket.send_json({
+                                "type": "message",
+                                "trip_id": trip_id,
+                                "message": "Replan one more time",
+                            })
+                            limited = websocket.receive_json()
+                            self.assertEqual(limited["type"], "replanning")
+                            self.assertEqual(
+                                limited["data"]["status"],
+                                "attempt_limit_reached",
+                            )
 
             with session_factory() as db:
                 trip = db.query(TripPlan).filter_by(id=trip_id, user_id=user.id).one()

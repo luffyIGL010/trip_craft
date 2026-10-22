@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy import update
 
 from database.models import TripPlan, TripPlanChange
 
@@ -53,6 +54,10 @@ def _valid_inr_amount(value: Any) -> bool:
         and math.isfinite(value)
         and value > 0
     )
+
+
+class ReplanAttemptLimitReached(Exception):
+    pass
 
 
 class ReplanningService:
@@ -438,6 +443,7 @@ class ReplanningService:
         user_id: int,
         key: str,
         original: dict,
+        limit: int,
     ) -> TripPlanChange:
         processing_response = {
             "trip_id": trip.id,
@@ -446,7 +452,18 @@ class ReplanningService:
                 "message": "A re-planning attempt is in progress.",
             },
         }
-        trip.replan_attempts += 1
+        result = db.execute(
+            update(TripPlan)
+            .where(
+                TripPlan.id == trip.id,
+                TripPlan.user_id == user_id,
+                TripPlan.replan_attempts < limit,
+            )
+            .values(replan_attempts=TripPlan.replan_attempts + 1)
+        )
+        if result.rowcount != 1:
+            db.rollback()
+            raise ReplanAttemptLimitReached("Re-planning attempt limit reached.")
         proposal = TripPlanChange(
             trip_id=trip.id,
             user_id=user_id,
@@ -476,7 +493,6 @@ class ReplanningService:
         proposal.response_json = json.dumps(response)
         proposal.status = status
         db.commit()
-
     @staticmethod
     def save_proposal(
         db: Session,
