@@ -20,7 +20,12 @@ origins = [
     "http://localhost:8080",
     "http://127.0.0.1:5500",  # Common VSCode Live Server port
     "http://127.0.0.1:8000",
-    "*"  # Fallback for file:// based local viewing during early development
+    
+    "http://localhost:3000",
+    "http://localhost:5500",
+    "https://tripcraft-frontend-psi.vercel.app",
+
+     # Fallback for file:// based local viewing during early development
 ]
 
 app.add_middleware(
