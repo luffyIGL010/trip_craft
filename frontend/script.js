@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             try {
                 // Send request to the FastAPI backend
-                const response = await fetch('http://127.0.0.1:8000/health');
+                const response = await fetch('https://trip-craft-7yjr.onrender.com/health');
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);

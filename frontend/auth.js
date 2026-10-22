@@ -1,4 +1,4 @@
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://trip-craft-7yjr.onrender.com';
 
 function setToken(token) {
     localStorage.setItem('travelagent_token', token);
