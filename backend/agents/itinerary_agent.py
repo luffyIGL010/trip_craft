@@ -18,7 +18,9 @@ Create exactly one day for each supplied trip date, in order. Use destination-lo
 
 All activities are AI-generated suggestions, not confirmed reservations or live recommendations. Do not claim current opening hours, ticket prices, availability, transit times, or travel durations. Do not invent flight or hotel bookings. Treat hotel options as candidates, not selected accommodations; any supplied hotel prices are search results, not guaranteed rates. Do not convert currencies or claim the trip fits the budget based on hotel prices alone.
 
-When flight timing constraints are supplied, schedule no activity before the destination arrival time on its date or after the return departure time on its date. These times are local times and should be treated as hard boundaries. If flight timing is unavailable or marked as mock data, do not infer arrival or departure times from it. Do not add facts that are absent from the supplied trip context."""
+When flight timing constraints are supplied, schedule no activity before the destination arrival time on its date or after the return departure time on its date. These times are local times and should be treated as hard boundaries. If flight timing is unavailable or marked as mock data, do not infer arrival or departure times from it.
+
+Use supplied Open-Meteo weather only for dates explicitly marked forecast_available. Consider rain, heat, cold, and wind when suggesting outdoor activities, and include flexible indoor alternatives or practical precautions when useful. Never infer weather for unavailable dates, treat a forecast as a guarantee, or describe a planning advisory as an official alert. If weather is unavailable, proceed without weather-based claims. Do not add facts that are absent from the supplied trip context."""
 
 
 def _field(value: Any, name: str, default=None):
@@ -62,6 +64,7 @@ class ItineraryAgent:
         transport_results: Any = None,
         hotel_results: Any = None,
         saved_preferences: Optional[list[dict]] = None,
+        weather_results: Any = None,
     ) -> ItineraryResult:
         missing = []
         if not plan.destination or not plan.destination.strip():
@@ -153,6 +156,7 @@ class ItineraryAgent:
             transport_results,
             hotel_results,
             saved_preferences or [],
+            weather_results,
         )
 
         try:
@@ -205,6 +209,15 @@ class ItineraryAgent:
             notices.append(
                 "Flight data was mock data and was not used to constrain the itinerary."
             )
+        weather = context["weather"]
+        if weather["status"] in {"success", "partial"}:
+            notices.append(
+                "Open-Meteo forecasts are time-sensitive estimates; unavailable dates are not forecast."
+            )
+        elif weather.get("message"):
+            notices.append(
+                f"Weather context unavailable: {weather['message']}"
+            )
         return ItineraryResult(
             status="success",
             destination=plan.destination,
@@ -224,6 +237,7 @@ class ItineraryAgent:
         transport_results: Any,
         hotel_results: Any,
         saved_preferences: list[dict],
+        weather_results: Any = None,
     ) -> tuple[dict, dict]:
         transport_status = _field(transport_results, "status")
         is_mock_flights = bool(_field(transport_results, "is_mock", False))
@@ -358,6 +372,49 @@ class ItineraryAgent:
                             hotel_context[key] = value
                 hotels.append(hotel_context)
 
+        weather_context = {
+            "source": _field(weather_results, "source"),
+            "status": _field(weather_results, "status", "unavailable"),
+            "timezone": _field(weather_results, "timezone"),
+            "message": _field(weather_results, "message"),
+            "advisory_notice": _field(weather_results, "advisory_notice"),
+            "daily_units": _field(weather_results, "daily_units", {}),
+            "days": [],
+        }
+        for weather_day in (_field(weather_results, "days", []) or []):
+            day_context = {
+                key: _field(weather_day, key)
+                for key in (
+                    "date",
+                    "forecast_available",
+                    "condition",
+                    "temperature_2m_min",
+                    "temperature_2m_max",
+                    "precipitation_probability_max",
+                    "precipitation_sum",
+                    "wind_speed_10m_max",
+                    "sunrise",
+                    "sunset",
+                    "warnings",
+                )
+            }
+            day_context["hourly"] = [
+                {
+                    key: _field(hour, key)
+                    for key in (
+                        "time",
+                        "temperature_2m",
+                        "weather_code",
+                        "condition",
+                        "precipitation_probability",
+                        "precipitation",
+                        "rain",
+                    )
+                }
+                for hour in (_field(weather_day, "hourly", []) or [])
+            ]
+            weather_context["days"].append(day_context)
+
         context = {
             "destination": plan.destination,
             "origin": plan.origin,
@@ -390,6 +447,7 @@ class ItineraryAgent:
             "flight_options": flight_options,
             "flight_timing": flight_timing,
             "hotel_options": hotels,
+            "weather": weather_context,
         }
         return context, constraints
 

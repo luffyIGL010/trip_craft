@@ -66,7 +66,96 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId, preferenceLimitations) {
+    function weatherValue(value, unit) {
+        return typeof value === 'number' && Number.isFinite(value)
+            ? `${escapeHtml(value)}${unit ? ` ${escapeHtml(unit)}` : ''}`
+            : 'Not available';
+    }
+
+    function renderWeather(weatherResults) {
+        if (!weatherResults) return '';
+
+        const location = weatherResults.location;
+        const locationLabel = location
+            ? [location.name, location.admin1, location.country].filter(Boolean).map(escapeHtml).join(', ')
+            : escapeHtml(weatherResults.destination || 'Destination');
+        const current = weatherResults.current;
+        const currentUnits = weatherResults.current_units || {};
+        let html = `<section class="plan-result weather-panel" aria-label="Destination weather">
+            <div class="weather-heading">
+                <div>
+                    <span class="section-eyebrow">OPEN-METEO</span>
+                    <h4>Weather for ${locationLabel}</h4>
+                </div>
+                ${weatherResults.timezone ? `<span class="weather-timezone">${escapeHtml(weatherResults.timezone)}</span>` : ''}
+            </div>`;
+
+        if (current && current.time) {
+            html += `<div class="weather-current">
+                <div class="weather-current-main">
+                    <strong>Current conditions</strong>
+                    <span>${escapeHtml(current.condition || 'Conditions unavailable')}</span>
+                    <span>${weatherValue(current.temperature_2m, currentUnits.temperature_2m)}</span>
+                </div>
+                <div class="weather-current-detail">
+                    <span>As of ${escapeHtml(current.time)}${weatherResults.timezone ? ` (${escapeHtml(weatherResults.timezone)})` : ''}</span>
+                    <span>Rain ${weatherValue(current.rain, currentUnits.rain)}</span>
+                    <span>Precipitation ${weatherValue(current.precipitation, currentUnits.precipitation)}</span>
+                    <span>Humidity ${weatherValue(current.relative_humidity_2m, currentUnits.relative_humidity_2m)}</span>
+                    <span>Wind ${weatherValue(current.wind_speed_10m, currentUnits.wind_speed_10m)}</span>
+                </div>
+                <p>Current conditions are separate from the trip-date forecast.</p>
+            </div>`;
+        }
+
+        if (weatherResults.message) {
+            html += `<div class="weather-message">${escapeHtml(weatherResults.message)}</div>`;
+        }
+
+        if (Array.isArray(weatherResults.days) && weatherResults.days.length) {
+            const dailyUnits = weatherResults.daily_units || {};
+            const hourlyUnits = weatherResults.hourly_units || {};
+            html += `<h5 class="weather-forecast-title">Trip-date forecast</h5>
+                <div class="weather-days">`;
+            weatherResults.days.forEach(day => {
+                html += `<article class="weather-day">
+                    <h5>${escapeHtml(day.date || '')}</h5>`;
+                if (!day.forecast_available) {
+                    html += `<p class="weather-unavailable">No reliable forecast is currently available for this date. No weather values are estimated.</p>`;
+                } else {
+                    html += `<p class="weather-condition">${escapeHtml(day.condition || 'Conditions unavailable')}</p>
+                        <div class="weather-day-details">
+                            <span>High ${weatherValue(day.temperature_2m_max, dailyUnits.temperature_2m_max)}</span>
+                            <span>Low ${weatherValue(day.temperature_2m_min, dailyUnits.temperature_2m_min)}</span>
+                            <span>Rain chance ${weatherValue(day.precipitation_probability_max, dailyUnits.precipitation_probability_max)}</span>
+                            <span>Precipitation ${weatherValue(day.precipitation_sum, dailyUnits.precipitation_sum)}</span>
+                            <span>Max wind ${weatherValue(day.wind_speed_10m_max, dailyUnits.wind_speed_10m_max)}</span>
+                            ${day.sunrise ? `<span>Sunrise ${escapeHtml(day.sunrise)}</span>` : ''}
+                            ${day.sunset ? `<span>Sunset ${escapeHtml(day.sunset)}</span>` : ''}
+                        </div>`;
+                    if (Array.isArray(day.hourly) && day.hourly.length) {
+                        html += `<div class="weather-hourly"><strong>Daytime hourly outlook</strong>
+                            <div>${day.hourly.map(hour => `<span>${escapeHtml((hour.time || '').split('T')[1] || '')} · ${weatherValue(hour.temperature_2m, hourlyUnits.temperature_2m)} · ${escapeHtml(hour.condition || 'Conditions unavailable')} · rain ${weatherValue(hour.precipitation_probability, hourlyUnits.precipitation_probability)}</span>`).join('')}</div>
+                        </div>`;
+                    }
+                    if (Array.isArray(day.warnings) && day.warnings.length) {
+                        html += `<ul class="weather-warnings">${day.warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`;
+                    }
+                }
+                html += `</article>`;
+            });
+            html += `</div>`;
+        }
+
+        if (weatherResults.advisory_notice) {
+            html += `<p class="weather-advisory">${escapeHtml(weatherResults.advisory_notice)}</p>`;
+        }
+        html += `<p class="weather-source">Weather data: ${escapeHtml(weatherResults.source || 'Open-Meteo')}. Forecast coverage reflects only dates actually returned by the provider.</p>
+            </section>`;
+        return html;
+    }
+
+    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId, preferenceLimitations, weatherResults) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${escapeHtml(plan.request_summary || '')}</em></p>
@@ -359,6 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             html += `</div>`;
         }
+
+        html += renderWeather(weatherResults);
 
         if (itineraryResults) {
             html += `<div class="plan-result" style="margin-top:15px; border-left:4px solid #0f766e;">
@@ -658,7 +749,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         data.data.itinerary_results,
                         data.data.replanning,
                         data.data.trip_id,
-                        data.data.preference_limitations
+                        data.data.preference_limitations,
+                        data.data.weather_results
                     );
                 } else if (data.type === 'replan_decision') {
                     const statusElement = messagesContainer.querySelector(

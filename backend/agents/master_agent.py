@@ -8,6 +8,7 @@ from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
 from .hotel_agent import HotelAgent
 from .itinerary_agent import ItineraryAgent
+from services.weather_api import OpenMeteoWeatherService
 from preferences.service import (
     accommodation_preference_from_request,
     explicit_categories_in_request,
@@ -131,6 +132,7 @@ class MasterAgent:
             
         self.travel_agent = TravelAgent()
         self.hotel_agent = HotelAgent()
+        self.weather_service = OpenMeteoWeatherService()
         self.itinerary_agent = ItineraryAgent(client=self.client)
 
     async def process_request(
@@ -211,6 +213,13 @@ class MasterAgent:
         )
         if wants_itinerary and "create_itinerary" not in plan.tasks:
             plan.tasks.append("create_itinerary")
+        wants_weather = re.search(
+            r"\bweather\b|\bforecast\b|\brain\b",
+            user_message,
+            re.IGNORECASE,
+        ) is not None
+        if wants_weather and "check_weather" not in plan.tasks:
+            plan.tasks.append("check_weather")
 
         current_categories = explicit_categories_in_request(user_message)
         if plan.budget.amount is not None:
@@ -241,6 +250,7 @@ class MasterAgent:
             "transport_results": None,
             "hotel_results": None,
             "itinerary_results": None,
+            "weather_results": None,
         }
         unsupported_transport_preferences = [
             preference.get("value")
@@ -369,6 +379,29 @@ class MasterAgent:
         elif hotel_inputs_unchanged:
             response_data["hotel_results"] = previous_hotels
 
+        if wants_itinerary or wants_weather or plan.tasks:
+            try:
+                response_data["weather_results"] = await self.weather_service.get_trip_weather(
+                    destination=plan.destination,
+                    start_date=plan.dates.start if plan.dates else None,
+                    end_date=plan.dates.end if plan.dates else None,
+                    duration_days=plan.duration_days,
+                )
+            except Exception:
+                logger.exception("Weather lookup failed; continuing trip planning without weather.")
+                response_data["weather_results"] = {
+                    "status": "error",
+                    "destination": plan.destination,
+                    "location": None,
+                    "timezone": None,
+                    "current": None,
+                    "days": [],
+                    "message": (
+                        "Weather could not be retrieved. Trip planning continued without weather data."
+                    ),
+                    "source": "Open-Meteo",
+                }
+
         if wants_itinerary:
             if status_callback:
                 await status_callback("itinerary_agent", "generating")
@@ -377,6 +410,7 @@ class MasterAgent:
                 transport_results=response_data["transport_results"],
                 hotel_results=response_data["hotel_results"],
                 saved_preferences=applicable_preferences,
+                weather_results=response_data["weather_results"],
             )
             response_data["itinerary_results"] = itinerary_result.model_dump()
             if status_callback:
