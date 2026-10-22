@@ -6,9 +6,14 @@ from sqlalchemy.orm import Session
 from jose import JWTError
 
 from database.database import get_db
-from database.models import User
+from database.models import TripPlan, TripPlanChange, User
 from auth.auth import decode_access_token
 from agents.master_agent import MasterAgent
+from services.replanning import (
+    ReplanningService,
+    max_replan_attempts,
+    request_key,
+)
 from preferences.service import (
     extract_explicit_preferences,
     list_preferences,
@@ -79,7 +84,25 @@ async def websocket_endpoint(
                 await websocket.send_json({"error": "Invalid JSON format."})
                 continue
                 
-            if data.get("type") == "message":
+            if data.get("type") == "replan_decision":
+                try:
+                    proposal_id = int(data.get("proposal_id"))
+                    decision = data.get("decision")
+                    if decision not in {"approve", "reject"}:
+                        raise ValueError("Decision must be approve or reject.")
+                    result = ReplanningService.decide(
+                        db,
+                        user.id,
+                        proposal_id,
+                        "approved" if decision == "approve" else "rejected",
+                    )
+                    await websocket.send_json({
+                        "type": "replan_decision",
+                        "data": result,
+                    })
+                except (ValueError, LookupError) as exc:
+                    await websocket.send_json({"error": str(exc)})
+            elif data.get("type") == "message":
                 user_message = data.get("message", "").strip()
                 
                 # Validate non-empty
@@ -125,12 +148,116 @@ async def websocket_endpoint(
                         )
                         saved_preferences = []
 
-                    # Call the Master Agent with only this user's saved travel preferences.
-                    result_data = await master_agent.process_request(
-                        user_message,
-                        status_callback=send_status,
-                        saved_preferences=saved_preferences,
-                    )
+                    trip = None
+                    is_replan = ReplanningService.is_replan_request(user_message)
+                    if is_replan:
+                        try:
+                            trip_id = int(data.get("trip_id"))
+                        except (TypeError, ValueError):
+                            trip_id = None
+                        if trip_id is None:
+                            await websocket.send_json({
+                                "error": "Re-planning requires an existing saved trip. Create a trip plan first."
+                            })
+                            continue
+                        trip = db.query(TripPlan).filter(
+                            TripPlan.id == trip_id,
+                            TripPlan.user_id == user.id,
+                        ).first()
+                        if trip is None:
+                            await websocket.send_json({"error": "Trip plan not found."})
+                            continue
+
+                        key = request_key(user.id, trip.id, user_message)
+                        previous_proposal = db.query(TripPlanChange).filter(
+                            TripPlanChange.trip_id == trip.id,
+                            TripPlanChange.user_id == user.id,
+                            TripPlanChange.request_key == key,
+                        ).first()
+                        if previous_proposal:
+                            await websocket.send_json({
+                                "type": "plan",
+                                "data": json.loads(previous_proposal.response_json),
+                            })
+                            continue
+                        if trip.replan_attempts >= max_replan_attempts():
+                            await websocket.send_json({
+                                "type": "replanning",
+                                "data": {
+                                    "trip_id": trip.id,
+                                    "status": "attempt_limit_reached",
+                                    "message": (
+                                        "The maximum number of re-planning attempts has been reached. "
+                                        "Start a new trip plan or review the available alternatives."
+                                    ),
+                                },
+                            })
+                            continue
+
+                        original_state = json.loads(trip.state_json)
+                        trip.replan_attempts += 1
+                        db.commit()
+                        result_data = await master_agent.process_request(
+                            user_message,
+                            status_callback=send_status,
+                            saved_preferences=saved_preferences,
+                            current_trip=original_state,
+                        )
+                        analysis = ReplanningService.prepare_proposal(
+                            original_state,
+                            result_data,
+                            user_message,
+                            saved_preferences,
+                        )
+                        result_data["trip_id"] = trip.id
+                        result_data["replanning"] = analysis
+                        proposal_status = (
+                            "pending"
+                            if analysis["status"] == "awaiting_approval"
+                            else analysis["status"]
+                        )
+                        proposal = ReplanningService.save_proposal(
+                            db,
+                            trip,
+                            user.id,
+                            key,
+                            original_state,
+                            result_data,
+                            analysis,
+                            result_data,
+                            status=proposal_status,
+                        )
+                        result_data["replanning"]["proposal_id"] = proposal.id
+                        proposal.response_json = json.dumps(result_data)
+                        db.commit()
+                    else:
+                        # Keep the existing chat message and plan response formats.
+                        result_data = await master_agent.process_request(
+                            user_message,
+                            status_callback=send_status,
+                            saved_preferences=saved_preferences,
+                        )
+                        trip = ReplanningService.save_initial_plan(db, user.id, result_data)
+                        result_data["trip_id"] = trip.id
+                        conflicts = ReplanningService.detect_conflicts(
+                            result_data,
+                            saved_preferences,
+                        )
+                        result_data["replanning"] = {
+                            "status": "conflicts_detected" if conflicts else "not_needed",
+                            "conflicts": conflicts,
+                            "changes": [],
+                            "alternatives": ReplanningService._budget_alternatives(
+                                result_data,
+                                saved_preferences,
+                            ),
+                            "unresolved_conflicts": conflicts,
+                            "message": (
+                                "Review these detected planning issues; no changes were applied."
+                                if conflicts
+                                else "No supported trip conflict was detected."
+                            ),
+                        }
                     
                     # Return the structured plan and transport results
                     await websocket.send_json({
