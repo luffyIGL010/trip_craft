@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
-    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults) {
+    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${plan.request_summary || ''}</em></p>
@@ -463,12 +463,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
             html += `</div>`;
         }
+
+        if (tripId !== null && tripId !== undefined) {
+            sessionStorage.setItem('travelagent_trip_id', String(tripId));
+        }
+        if (replanning) {
+            const conflicts = replanning.conflicts || [];
+            const changes = replanning.changes || [];
+            const alternatives = replanning.alternatives || [];
+            const needsApproval = replanning.status === 'awaiting_approval'
+                && Number.isInteger(replanning.proposal_id);
+            html += `<div class="plan-result" style="margin-top:15px; border-left:4px solid #d97706;">
+                <h4 style="margin:0; color:#92400e;">🔄 Trip re-planning</h4>
+                <p style="font-size:0.9rem; color:#475569;">${escapeHtml(replanning.message || '')}</p>
+                ${conflicts.length ? `<div><strong>Detected issues</strong><ul>${conflicts.map(issue => `<li>${escapeHtml(issue.message || issue.code || 'Planning conflict')}</li>`).join('')}</ul></div>` : ''}
+                ${changes.length ? `<div><strong>${needsApproval ? 'Proposed changes' : 'Changes'}</strong><ul>${changes.map(change => {
+                    const priceDiff = Number.isFinite(change.price_difference)
+                        ? ` · estimated difference ${change.price_difference > 0 ? '+' : ''}₹${change.price_difference.toLocaleString()}`
+                        : '';
+                    return `<li><strong>${escapeHtml(change.field || 'Trip detail')}:</strong> ${escapeHtml(typeof change.original === 'string' ? change.original : JSON.stringify(change.original))} → ${escapeHtml(typeof change.proposed === 'string' ? change.proposed : JSON.stringify(change.proposed))}<br><span>${escapeHtml(change.reason || '')}${priceDiff}</span>${change.notice ? `<br><span>${escapeHtml(change.notice)}</span>` : ''}</li>`;
+                }).join('')}</ul></div>` : ''}
+                ${alternatives.length ? `<div><strong>Available alternatives</strong><ul>${alternatives.map(item => `<li>${escapeHtml(item.flight_option || 'Flight')} + ${escapeHtml(item.hotel_option || 'Hotel')}: ${item.combined_total !== null && item.combined_total !== undefined ? `${escapeHtml(item.currency || 'INR')} ${Number(item.combined_total).toLocaleString()}` : 'price unavailable'} (${escapeHtml(item.confidence || 'unverified')})${item.warning ? ` — ${escapeHtml(item.warning)}` : ''}</li>`).join('')}</ul></div>` : ''}
+                ${(replanning.unresolved_conflicts || []).length ? `<div class="plan-section missing"><strong>Unresolved</strong><ul>${replanning.unresolved_conflicts.map(issue => `<li>${escapeHtml(issue.message || issue.code || 'Unresolved planning issue')}</li>`).join('')}</ul></div>` : ''}
+                ${replanning.booking_notice ? `<p style="font-size:0.8rem; color:#64748b;">${escapeHtml(replanning.booking_notice)}</p>` : ''}
+                ${needsApproval ? `<div style="display:flex; gap:8px;"><button type="button" class="replan-decision-btn" data-proposal-id="${replanning.proposal_id}" data-decision="approve">Approve plan update</button><button type="button" class="replan-decision-btn" data-proposal-id="${replanning.proposal_id}" data-decision="reject">Reject</button></div><div class="replan-decision-status" aria-live="polite"></div>` : ''}
+            </div>`;
+        }
         
         const msgDiv = document.createElement('div');
         msgDiv.style.marginBottom = '10px';
         msgDiv.innerHTML = html;
         messagesContainer.appendChild(msgDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        msgDiv.querySelectorAll('.replan-decision-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    appendMessage('System', 'Connect to the chat before responding to the proposal.');
+                    return;
+                }
+                ws.send(JSON.stringify({
+                    type: 'replan_decision',
+                    proposal_id: Number(button.dataset.proposalId),
+                    decision: button.dataset.decision
+                }));
+                msgDiv.querySelectorAll('.replan-decision-btn').forEach(item => {
+                    item.disabled = true;
+                });
+                msgDiv.querySelector('.replan-decision-status').textContent = 'Submitting your decision...';
+            });
+        });
 
         // Mount PayPal checkout buttons into sentinel elements after DOM is attached
         if (typeof window.renderCheckoutButton === 'function' && combinedTripCost && combinedTripCost.estimates) {
@@ -547,8 +590,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         data.data.transport_results,
                         data.data.hotel_results,
                         data.data.combined_trip_cost,
-                        data.data.itinerary_results
+                        data.data.itinerary_results,
+                        data.data.replanning,
+                        data.data.trip_id
                     );
+                } else if (data.type === 'replan_decision') {
+                    appendMessage('System', escapeHtml(data.data.message || `Proposal ${data.data.status}.`));
+                } else if (data.type === 'replanning') {
+                    appendMessage('System', escapeHtml(data.data.message || 'Re-planning could not continue.'));
                 } else {
                     appendMessage('Server', event.data);
                 }
@@ -582,6 +631,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const messageText = input.value.trim();
             if (messageText) {
                 const payload = { type: "message", message: messageText };
+                const tripId = sessionStorage.getItem('travelagent_trip_id');
+                if (tripId) payload.trip_id = tripId;
                 ws.send(JSON.stringify(payload));
                 appendMessage('You', messageText);
                 input.value = '';
