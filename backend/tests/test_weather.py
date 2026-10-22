@@ -263,7 +263,7 @@ class OpenMeteoWeatherServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["status"], "unavailable")
         self.assertFalse(result["days"][0]["forecast_available"])
-        self.assertNotIn("temperature_2m_max", result["days"][0])
+        self.assertIsNone(result["days"][0]["temperature_2m_max"])
 
     async def test_partial_forecast_marks_unavailable_dates(self):
         service = self.make_service()
