@@ -801,7 +801,7 @@ class MasterAgent:
         budget_match = re.search(
             r"(?:₹|INR\s*)\s*([\d,]+(?:\.\d+)?)"
             r"|\b(?:budget|under|below|up to|maximum|max)\s*"
-            r"(?:of\s*)?(?:₹|INR\s*)?([\d,]+(?:\.\d+)?)",
+            r"(?:of\s*)?(?:₹|\$|€|£|INR\s*|USD\s*|EUR\s*|GBP\s*)?([\d,]+(?:\.\d+)?)",
             user_message,
             re.IGNORECASE,
         )

@@ -259,6 +259,46 @@ class PreferenceApiTests(unittest.TestCase):
         response = self.client.get("/api/preferences")
         self.assertGreaterEqual(response.status_code, 400)
 
+    def test_new_accommodation_styles_and_budget_validation(self):
+        for accommodation in (
+            "hostel",
+            "standard hotel",
+            "premium hotel",
+            "resort",
+            "homestay",
+            "guesthouse",
+            "vacation rental",
+            "camps or cottages",
+            "no preference",
+        ):
+            response = self.client.post(
+                "/api/preferences",
+                json={"category": "accommodation", "value": accommodation},
+            )
+            self.assertEqual(response.status_code, 201, accommodation)
+
+        invalid_budget = self.client.post(
+            "/api/preferences",
+            json={
+                "category": "budget",
+                "value": "Usual budget",
+                "min_amount": 50000,
+                "max_amount": 10000,
+                "currency": "INR",
+                "budget_basis": "total_trip",
+            },
+        )
+        self.assertEqual(invalid_budget.status_code, 422)
+
+        detail_value = self.client.post(
+            "/api/preferences",
+            json={
+                "category": "accommodation",
+                "value": "luxury — near public transport",
+            },
+        )
+        self.assertEqual(detail_value.status_code, 201)
+
     def test_preferences_persist_across_database_engine_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "preferences.db"

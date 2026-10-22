@@ -218,6 +218,39 @@ class ReplanningAnalysisTests(unittest.TestCase):
             {item["status"] for item in analysis["checks_completed"]},
         )
 
+    def test_no_conflict_requires_successful_relevant_checks(self):
+        state = _state()
+        state["hotel_results"]["options"] = [{"name": "Provider hotel"}]
+        state["transport_results"]["options"] = [{
+            "option_id": "flight-1",
+            "outbound_leg": {"arrival_time": "2027-05-01T09:00:00+08:00"},
+        }]
+
+        analysis = ReplanningService.analyze(state)
+
+        self.assertEqual(analysis["status"], "no_conflict")
+        self.assertFalse(analysis["unable_to_validate"])
+        self.assertTrue(all(
+            item["status"] in {"completed", "not_specified", "not_requested"}
+            for item in analysis["checks_completed"]
+        ))
+
+    def test_explicit_current_trip_budget_takes_priority_over_saved_guideline(self):
+        state = _state(total=25000)
+        state["plan"]["budget"] = {
+            "amount": 30000,
+            "currency": "INR",
+            "basis": "total_trip",
+        }
+        analysis = ReplanningService.analyze(state, [{
+            "category": "budget",
+            "budget_basis": "total_trip",
+            "currency": "INR",
+            "max_amount": 10000,
+        }])
+
+        self.assertNotIn("budget_exceeded", {item["code"] for item in analysis["conflicts"]})
+
     def test_empty_and_failed_results_are_unable_to_validate_not_no_conflict(self):
         state = _state()
         state["transport_results"]["options"] = []
