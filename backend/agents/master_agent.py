@@ -223,7 +223,6 @@ class MasterAgent:
         previous_hotels = (current_trip or {}).get("hotel_results")
         transport_inputs_unchanged = bool(
             previous_transport
-            and previous_transport.get("status") == "success"
             and previous_transport.get("origin") == plan.origin
             and previous_transport.get("destination") == plan.destination
             and previous_transport.get("outbound_date") == plan.dates.start
@@ -234,7 +233,6 @@ class MasterAgent:
         )
         hotel_inputs_unchanged = bool(
             previous_hotels
-            and previous_hotels.get("status") == "success"
             and previous_hotels.get("destination") == plan.destination
             and previous_hotels.get("check_in") == plan.dates.start
             and previous_hotels.get("check_out") == plan.dates.end
