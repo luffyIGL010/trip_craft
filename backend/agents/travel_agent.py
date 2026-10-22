@@ -298,9 +298,6 @@ class TravelAgent:
                         price = None
                 except (KeyError, TypeError, ValueError):
                     price = None
-                duration_mins = f.get("total_duration", 0)
-                duration_str = f"{duration_mins // 60}h {duration_mins % 60}m" if duration_mins else "Unknown"
-                
                 flights_list = f.get("flights", [])
                 outbound_flights = (
                     flights_list[:trip_split_index]
@@ -315,10 +312,16 @@ class TravelAgent:
                     for segment in outbound_flights
                     if isinstance(segment.get("duration", 0), (int, float))
                 )
+                outbound_duration = outbound_duration or f.get("total_duration", 0)
+                duration_str = (
+                    f"{outbound_duration // 60}h {outbound_duration % 60}m"
+                    if outbound_duration
+                    else "Unknown"
+                )
                 outbound_leg = build_leg({
                     **f,
                     "flights": outbound_flights,
-                    "total_duration": outbound_duration or f.get("total_duration"),
+                    "total_duration": outbound_duration,
                 })
                 return_leg = None
                 if trip_split_index is not None:
@@ -328,10 +331,11 @@ class TravelAgent:
                         for segment in returning_flights
                         if isinstance(segment.get("duration", 0), (int, float))
                     )
+                    return_duration = return_duration or f.get("total_duration")
                     return_leg = build_leg({
                         **f,
                         "flights": returning_flights,
-                        "total_duration": return_duration or f.get("total_duration"),
+                        "total_duration": return_duration,
                     })
 
                 options.append(TransportOption(
@@ -344,7 +348,7 @@ class TravelAgent:
                     departure=departure_time,
                     arrival=arrival_time,
                     duration=duration_str,
-                    stops=max(0, len(flights_list) - 1),
+                    stops=max(0, len(outbound_flights) - 1),
                     price=price,
                     currency="INR",
                     price_type="provider_returned",

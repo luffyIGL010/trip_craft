@@ -161,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
                             <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}</div>
                             <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
+                            ${opt.return_leg ? `<div style="margin-top:4px;"><strong>Return:</strong> ${escapeHtml(opt.return_leg.departure_airport || '')} → ${escapeHtml(opt.return_leg.arrival_airport || '')} | ${escapeHtml(opt.return_leg.departure_time || '')} → ${escapeHtml(opt.return_leg.arrival_time || '')} | ${escapeHtml(opt.return_leg.duration || '')}</div>` : ''}
                         </div>
                     </div>`;
                 });
