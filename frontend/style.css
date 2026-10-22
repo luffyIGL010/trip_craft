@@ -1466,3 +1466,138 @@ button.danger:hover:not(:disabled) {
         transition-duration: 0.01ms !important;
     }
 }
+
+.weather-panel {
+    margin-top: 15px;
+    border-left: 4px solid #0284c7;
+}
+
+.weather-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.weather-heading h4,
+.weather-forecast-title {
+    margin: 0;
+    color: #155e75;
+}
+
+.weather-timezone,
+.weather-source,
+.weather-advisory {
+    color: #64748b;
+    font-size: 0.78rem;
+}
+
+.weather-current {
+    margin-top: 12px;
+    padding: 13px;
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+    background: #f0f9ff;
+}
+
+.weather-current-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    color: #0c4a6e;
+}
+
+.weather-current-main > span:last-child {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.weather-current-detail,
+.weather-day-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 7px;
+    color: #475569;
+    font-size: 0.82rem;
+}
+
+.weather-current > p,
+.weather-source,
+.weather-advisory {
+    margin: 8px 0 0;
+}
+
+.weather-message,
+.weather-unavailable {
+    margin-top: 9px;
+    color: #92400e;
+    font-size: 0.86rem;
+}
+
+.weather-forecast-title {
+    margin-top: 14px;
+    margin-bottom: 8px;
+    font-size: 0.96rem;
+}
+
+.weather-days {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+    gap: 9px;
+}
+
+.weather-day {
+    min-width: 0;
+    padding: 11px;
+    border: 1px solid #e2e8f0;
+    border-radius: 11px;
+    background: #fff;
+}
+
+.weather-day h5,
+.weather-condition {
+    margin: 0 0 6px;
+    color: #334155;
+}
+
+.weather-condition {
+    font-weight: 650;
+}
+
+.weather-hourly {
+    margin-top: 9px;
+    color: #475569;
+    font-size: 0.78rem;
+}
+
+.weather-hourly > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 5px;
+}
+
+.weather-hourly > div > span {
+    padding: 4px 6px;
+    border-radius: 6px;
+    background: #f1f5f9;
+}
+
+.weather-warnings {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: #9a3412;
+    font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+    .weather-heading {
+        flex-direction: column;
+    }
+
+    .weather-day-details {
+        gap: 5px 10px;
+    }
+}
