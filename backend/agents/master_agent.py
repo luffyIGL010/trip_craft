@@ -137,6 +137,7 @@ class MasterAgent:
         user_message: str,
         status_callback=None,
         saved_preferences: list[dict] | None = None,
+        current_trip: dict | None = None,
     ) -> dict:
         """Main entry point: analyze a user's travel request and return a structured plan with delegated results."""
         logger.info("Master Agent received a travel request.")
@@ -151,6 +152,27 @@ class MasterAgent:
             plan = self._call_llm(user_message)
         else:
             plan = self._mock_response(user_message)
+
+        previous_plan = (current_trip or {}).get("plan") or {}
+        if current_trip:
+            plan.destination = plan.destination or previous_plan.get("destination")
+            plan.origin = plan.origin or previous_plan.get("origin")
+            previous_dates = previous_plan.get("dates") or {}
+            plan.dates.start = plan.dates.start or previous_dates.get("start")
+            plan.dates.end = plan.dates.end or previous_dates.get("end")
+            plan.duration_days = plan.duration_days or previous_plan.get("duration_days")
+            plan.travelers = plan.travelers or previous_plan.get("travelers")
+            if plan.budget.amount is None:
+                previous_budget = previous_plan.get("budget") or {}
+                plan.budget.amount = previous_budget.get("amount")
+                plan.budget.currency = previous_budget.get("currency") or plan.budget.currency
+            previous_tasks = previous_plan.get("tasks") or []
+            for task in previous_tasks:
+                if task in {"find_transport", "find_hotel", "find_hotels"} and task not in plan.tasks:
+                    plan.tasks.append(task)
+            previous_itinerary = (current_trip.get("itinerary_results") or {}).get("status")
+            if previous_itinerary == "success" and "create_itinerary" not in plan.tasks:
+                plan.tasks.append("create_itinerary")
 
         wants_itinerary = (
             "create_itinerary" in plan.tasks
@@ -194,9 +216,33 @@ class MasterAgent:
             "hotel_results": None,
             "itinerary_results": None,
         }
-        
+
+        previous_transport = (current_trip or {}).get("transport_results")
+        previous_hotels = (current_trip or {}).get("hotel_results")
+        transport_inputs_unchanged = bool(
+            previous_transport
+            and previous_transport.get("status") == "success"
+            and previous_transport.get("origin") == plan.origin
+            and previous_transport.get("destination") == plan.destination
+            and previous_transport.get("outbound_date") == plan.dates.start
+            and previous_transport.get("return_date") == (
+                plan.dates.end if plan.dates.end != plan.dates.start else None
+            )
+            and (previous_transport.get("travelers") or 1) == (plan.travelers or 1)
+        )
+        hotel_inputs_unchanged = bool(
+            previous_hotels
+            and previous_hotels.get("status") == "success"
+            and previous_hotels.get("destination") == plan.destination
+            and previous_hotels.get("check_in") == plan.dates.start
+            and previous_hotels.get("check_out") == plan.dates.end
+            and (previous_hotels.get("adults") or 2) == (plan.travelers or 2)
+        )
+        if transport_inputs_unchanged:
+            response_data["transport_results"] = previous_transport
+
         # Phase 5: Delegate to Travel Agent if "find_transport" is a task
-        if "find_transport" in plan.tasks:
+        if "find_transport" in plan.tasks and not transport_inputs_unchanged:
             if status_callback:
                 await status_callback("travel_agent", "searching_transport")
                 
@@ -207,7 +253,10 @@ class MasterAgent:
                 await status_callback("travel_agent", "completed")
 
         # Phase 6: Delegate to Hotel Agent if "find_hotel" or "find_hotels" is a task
-        if "find_hotel" in plan.tasks or "find_hotels" in plan.tasks or any("hotel" in t for t in plan.tasks):
+        if (
+            ("find_hotel" in plan.tasks or "find_hotels" in plan.tasks or any("hotel" in t for t in plan.tasks))
+            and not hotel_inputs_unchanged
+        ):
             if status_callback:
                 await status_callback("hotel_agent", "preparing")
                 await status_callback("hotel_agent", "searching_hotels")
@@ -263,6 +312,8 @@ class MasterAgent:
 
             if status_callback:
                 await status_callback("hotel_agent", "completed")
+        elif hotel_inputs_unchanged:
+            response_data["hotel_results"] = previous_hotels
 
         if wants_itinerary:
             if status_callback:

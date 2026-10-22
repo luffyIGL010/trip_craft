@@ -340,17 +340,6 @@ class ReplanningService:
                 "currency": "INR",
                 "notice": "Search alternatives only; no flight or hotel is selected or booked.",
             })
-        if not changes and message.strip():
-            old_summary = old_plan.get("request_summary", "")
-            new_summary = new_plan.get("request_summary", "")
-            if old_summary != new_summary:
-                changes.append({
-                    "field": "trip_request",
-                    "original": old_summary or "Existing trip request",
-                    "proposed": new_summary or message.strip(),
-                    "reason": "Candidate generated in response to the requested trip change.",
-                    "price_difference": None,
-                })
         return changes
 
     @staticmethod
