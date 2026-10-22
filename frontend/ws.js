@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isRoundTrip = transportResults.trip_type === "round_trip" || !!transportResults.return_date;
             const priceLabelText = transportResults.price_label || "Provider price scope not specified";
             const returnFareNotice = isRoundTrip
-                ? "A round-trip search was requested; an outbound price does not include a verified return fare unless that option explicitly shows both legs."
+                ? "A round-trip search was requested; a return fare is not verified by the displayed price unless that option explicitly shows both legs."
                 : "A one-way search was requested; no return fare is included.";
 
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid var(--primary-color);">
