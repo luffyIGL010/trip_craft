@@ -354,18 +354,6 @@ class ReplanningService:
                 "price_difference": None,
             })
 
-        old_best = ReplanningService._lowest_verified_total(original)
-        new_best = ReplanningService._lowest_verified_total(candidate)
-        if old_best is not None and new_best is not None and old_best != new_best:
-            changes.append({
-                "field": "available_flight_hotel_estimate",
-                "original": old_best,
-                "proposed": new_best,
-                "reason": "A different verified flight-and-hotel search combination is available.",
-                "price_difference": new_best - old_best,
-                "currency": "INR",
-                "notice": "Search alternatives only; no flight or hotel is selected or booked.",
-            })
         return changes
 
     @staticmethod
