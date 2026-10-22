@@ -167,16 +167,7 @@ class ReplanningService:
 
     @staticmethod
     def _detect_budget_conflict(state, saved_preferences, conflicts):
-        preference = next(
-            (
-                item for item in saved_preferences
-                if item.get("category") == "budget"
-                and item.get("budget_basis") in {"total_trip", "per_person"}
-                and (item.get("currency") or "").upper() == "INR"
-                and item.get("max_amount") is not None
-            ),
-            None,
-        )
+        preference = ReplanningService._budget_for_state(state, saved_preferences)
         if not preference:
             return
         estimates = (state.get("combined_trip_cost") or {}).get("estimates") or []
@@ -278,16 +269,7 @@ class ReplanningService:
 
     @staticmethod
     def _budget_alternatives(candidate: dict, saved_preferences: list[dict]) -> list[dict]:
-        budget = next(
-            (
-                item for item in saved_preferences
-                if item.get("category") == "budget"
-                and item.get("budget_basis") in {"total_trip", "per_person"}
-                and (item.get("currency") or "").upper() == "INR"
-                and item.get("max_amount") is not None
-            ),
-            None,
-        )
+        budget = ReplanningService._budget_for_state(candidate, saved_preferences)
         estimates = (candidate.get("combined_trip_cost") or {}).get("estimates") or []
         usable = [
             item for item in estimates
@@ -323,6 +305,30 @@ class ReplanningService:
             if item.get("price_confidence") == "verified"
             and item["combined_total"] / factor <= maximum
         ][:3]
+
+    @staticmethod
+    def _budget_for_state(state: dict, saved_preferences: list[dict]) -> Optional[dict]:
+        explicit = (state.get("plan") or {}).get("budget") or {}
+        if (
+            explicit.get("amount") is not None
+            and explicit.get("basis") in {"total_trip", "per_person"}
+            and (explicit.get("currency") or "").upper() == "INR"
+        ):
+            return {
+                "budget_basis": explicit["basis"],
+                "currency": explicit["currency"],
+                "max_amount": explicit["amount"],
+            }
+        return next(
+            (
+                item for item in saved_preferences
+                if item.get("category") == "budget"
+                and item.get("budget_basis") in {"total_trip", "per_person"}
+                and (item.get("currency") or "").upper() == "INR"
+                and item.get("max_amount") is not None
+            ),
+            None,
+        )
 
     @staticmethod
     def _describe_changes(original: dict, candidate: dict, message: str) -> list[dict]:

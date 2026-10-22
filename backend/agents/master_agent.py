@@ -100,6 +100,7 @@ You must extract the following from the user's message:
 - duration_days: Number of calendar days for the trip, calculated as inclusive calendar days: difference between end and start dates plus 1 (e.g. 2026-12-27 to 2026-12-31 is 5 calendar days; or null if dates not provided).
 - travelers: Number of travelers/adults (or null if not provided).
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
+- budget.basis: "total_trip" or "per_person" only when the user explicitly states that basis; otherwise null.
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
 - tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip.
 - Include "create_itinerary" when the user requests an itinerary, a day-by-day plan, or a daily schedule.
@@ -166,6 +167,7 @@ class MasterAgent:
                 previous_budget = previous_plan.get("budget") or {}
                 plan.budget.amount = previous_budget.get("amount")
                 plan.budget.currency = previous_budget.get("currency") or plan.budget.currency
+                plan.budget.basis = previous_budget.get("basis")
             previous_tasks = previous_plan.get("tasks") or []
             for task in previous_tasks:
                 if task in {"find_transport", "find_hotel", "find_hotels"} and task not in plan.tasks:
@@ -617,7 +619,8 @@ class MasterAgent:
                 travelers=data.get("travelers"),
                 budget=Budget(
                     amount=budget_data.get("amount"),
-                    currency=budget_data.get("currency", "INR")
+                    currency=budget_data.get("currency", "INR"),
+                    basis=budget_data.get("basis"),
                 ),
                 preferences=data.get("preferences") or [],
                 tasks=data.get("tasks") or [],
@@ -745,6 +748,11 @@ class MasterAgent:
         budget_amount = None
         if "50000" in msg or "50,000" in msg:
             budget_amount = 50000.0
+        budget_basis = None
+        if re.search(r"\b(per person|per traveler|each traveler)\b", msg):
+            budget_basis = "per_person"
+        elif re.search(r"\b(total trip|whole trip|entire trip|overall budget)\b", msg):
+            budget_basis = "total_trip"
 
         # 5. Determine tasks
         is_hotel_intent = "hotel" in msg or "hotels" in msg or "stay" in msg or "accommodation" in msg
@@ -785,7 +793,7 @@ class MasterAgent:
             dates=Dates(start=start_date, end=end_date),
             duration_days=duration,
             travelers=travelers,
-            budget=Budget(amount=budget_amount),
+            budget=Budget(amount=budget_amount, basis=budget_basis),
             preferences=[],
             tasks=tasks,
             missing_information=missing

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Literal, Optional, List
 
 class Dates(BaseModel):
     start: Optional[str] = None
@@ -8,6 +8,7 @@ class Dates(BaseModel):
 class Budget(BaseModel):
     amount: Optional[float] = None
     currency: str = "INR"
+    basis: Optional[Literal["total_trip", "per_person"]] = None
 
 class MasterAgentResponse(BaseModel):
     request_summary: str
