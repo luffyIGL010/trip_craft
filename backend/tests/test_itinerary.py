@@ -531,6 +531,30 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plan.tasks, ["create_itinerary"])
         self.assertEqual(plan.duration_days, 3)
 
+    async def test_explicit_weather_request_runs_weather_without_itinerary(self):
+        agent = MasterAgent()
+        plan = make_plan(tasks=[])
+        weather = {
+            "status": "success",
+            "destination": "Goa",
+            "location": {"name": "Goa", "country": "India"},
+            "timezone": "Asia/Kolkata",
+            "current": None,
+            "days": [],
+            "source": "Open-Meteo",
+        }
+        agent._mock_response = Mock(return_value=plan)
+        agent.weather_service.get_trip_weather = AsyncMock(return_value=weather)
+
+        result = await agent.process_request(
+            "Check the weather forecast for Goa during my trip"
+        )
+
+        self.assertIn("check_weather", result["plan"]["tasks"])
+        self.assertEqual(result["weather_results"], weather)
+        agent.weather_service.get_trip_weather.assert_awaited_once()
+        agent.itinerary_agent.execute.assert_not_awaited()
+
     async def test_routes_day_by_day_request_and_passes_provider_results(self):
         agent = MasterAgent()
         agent.client = None
