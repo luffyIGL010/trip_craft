@@ -44,6 +44,8 @@ None of the specific travel action agents (flights, hotels, maps) are implemente
 │   ├── main.py          # FastAPI application, CORS, route registration
 │   ├── requirements.txt # Python dependencies
 │   ├── websocket.py     # WebSocket endpoint → Master Agent pipeline
+│   ├── services/
+│   │   └── weather_api.py # Open-Meteo geocoding and forecast client
 │   ├── database/
 │   │   ├── database.py  # SQLite setup and SQLAlchemy engine
 │   │   └── models.py    # User database model
@@ -86,7 +88,7 @@ GROQ_API_KEY=<your-groq-api-key>
 
 ## Phase 9: Agentic Trip Re-planning
 
-Authenticated chat plans are stored as owner-scoped planning snapshots. Ask to replan a saved trip to have the existing flight, hotel, and itinerary agents reuse unchanged search results or search changed trip inputs once, then present supported conflicts and alternatives. Proposed changes require explicit approval; approval only updates the saved planning snapshot and never books or pays for travel. Repeated identical requests are idempotent, and attempt limits prevent unbounded retries. The current integrations do not include live weather or booking APIs, so weather conflicts and booking/rebooking are not claimed or performed.
+Authenticated chat plans are stored as owner-scoped planning snapshots. Ask to replan a saved trip to have the existing flight, hotel, and itinerary agents reuse unchanged search results or search changed trip inputs once, then present supported conflicts and alternatives. Proposed changes require explicit approval; approval only updates the saved planning snapshot and never books or pays for travel. Repeated identical requests are idempotent, and attempt limits prevent unbounded retries. Open-Meteo forecasts are available to dated itinerary planning; they are not booking or flight-status data, and no booking/rebooking is claimed or performed.
 
 ### 3. Start the Server
 
@@ -114,12 +116,18 @@ Open `frontend/index.html` in your browser.
 
 ## Phase 7: Itinerary Agent
 
-Requests for an itinerary, day-by-day plan, or daily schedule are routed through the existing authenticated chat workflow. With `GROQ_API_KEY` configured, the Itinerary Agent uses the existing Groq client to produce one day per trip date, with practical activity and meal/free-time suggestions. It receives only the available flight timing and hotel option details; mock flight results are not treated as travel-time constraints. The UI labels all itinerary content as AI-generated suggestions and asks travelers to verify hours, availability, prices, and local conditions. No destination/activity API is currently integrated, so live opening hours, ticket prices, availability, and travel durations are not provided. Itineraries are limited to 30 calendar days; without model configuration or on malformed model output, the agent returns a clear error instead of fabricated suggestions.
+Requests for an itinerary, day-by-day plan, or daily schedule are routed through the existing authenticated chat workflow. With `GROQ_API_KEY` configured, the Itinerary Agent uses the existing Groq client to produce one day per trip date, with practical activity and meal/free-time suggestions. It receives available flight timing, hotel option details, and date-matched Open-Meteo forecast context; mock flight results are not treated as travel-time constraints. The UI labels itinerary content as AI-generated suggestions and asks travelers to verify hours, availability, prices, and local conditions. No destination/activity API is currently integrated, so live opening hours, ticket prices, availability, and travel durations are not provided. Itineraries are limited to 30 calendar days; without model configuration or on malformed model output, the agent returns a clear error instead of fabricated suggestions.
+
+## Weather Integration
+
+The existing authenticated WebSocket planning flow invokes `services/weather_api.py` when weather is requested or when the Master Agent routes a dated itinerary through `check_weather`. The service resolves the requested destination through the Open-Meteo Geocoding API, then queries the Open-Meteo Forecast API with the resolved coordinates, automatic local timezone, and current/hourly/daily variables. No API key is required. Weather is returned separately as `weather_results` and does not affect flight or hotel prices.
+
+The dashboard displays current conditions separately from the trip-date forecast, including returned daily and selected daytime hourly data, units, and heuristic planning advisories. Each requested date without a provider forecast is explicitly marked unavailable; the service never substitutes another city or extrapolates weather. Forecast coverage is limited to dates actually returned by Open-Meteo (up to 16 requested forecast days). Weather failures and ambiguous destinations are reported without stopping itinerary generation. Weather-based itinerary suggestions remain AI-generated and do not represent official alerts or guaranteed conditions.
 
 ## What is NOT Built Yet (Intentionally)
 
-- Specialized activity, budget, and weather agents
-- Real API calls for weather, maps, and activities
+- Specialized activity and budget agents
+- Real API calls for maps and activities
 - Conversation-history memory (Redis or a vector database)
 - Production deployment
 
