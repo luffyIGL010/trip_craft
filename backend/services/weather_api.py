@@ -80,9 +80,12 @@ def _valid_coordinates(candidate: dict) -> bool:
 
 
 def _weather_description(code: Any) -> Optional[str]:
-    if isinstance(code, bool) or not isinstance(code, int):
+    if isinstance(code, bool) or not isinstance(code, (int, float)) or not math.isfinite(code):
         return None
-    return WMO_DESCRIPTIONS.get(code, f"Weather code {code}")
+    if not float(code).is_integer():
+        return None
+    normalized_code = int(code)
+    return WMO_DESCRIPTIONS.get(normalized_code, f"Weather code {normalized_code}")
 
 
 class OpenMeteoWeatherService:
@@ -108,7 +111,10 @@ class OpenMeteoWeatherService:
         try:
             start = date.fromisoformat(start_date) if start_date else None
         except (TypeError, ValueError):
-            return self._unavailable(destination, "A valid trip start date is required for date-specific weather.")
+            return self._unavailable(
+                destination,
+                "The trip start date must be a valid YYYY-MM-DD date.",
+            )
         if start is None:
             return self._unavailable(destination, "A trip start date is required for date-specific weather.")
 
