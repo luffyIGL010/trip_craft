@@ -278,11 +278,138 @@ button:disabled {
 }
 
 .preferences-budget {
-    display: contents;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.85rem;
+    grid-column: 1 / -1;
+    padding: 1rem;
+    background: #f8fbff;
+    border: 1px solid #dbeafe;
+    border-radius: var(--border-radius-sm);
 }
 
 .preferences-form .actions {
     grid-column: 1 / -1;
+}
+
+.preferences-form .form-group input,
+.preferences-form .form-group select,
+#preferenceChoices select {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: var(--border-radius-sm);
+    background: #fff;
+    font: inherit;
+}
+
+.preferences-form input:focus-visible,
+.preferences-form select:focus-visible,
+.preference-image-option:focus-within,
+.preference-chip-option:focus-within {
+    outline: 3px solid rgba(59, 130, 246, 0.35);
+    outline-offset: 2px;
+}
+
+.budget-helper {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+}
+
+.preference-choice-area {
+    grid-column: 1 / -1;
+}
+
+.preference-choice-group {
+    min-width: 0;
+    border: 0;
+}
+
+.preference-choice-group legend {
+    font-size: 0.9rem;
+    font-weight: 650;
+    color: #334155;
+    margin-bottom: 0.55rem;
+}
+
+.preference-image-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 0.65rem;
+}
+
+.preference-image-option {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    overflow: hidden;
+    border: 1px solid #dbe3ee;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.preference-image-option:has(input:checked) {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+    background: #f5f9ff;
+}
+
+.preference-image-option img {
+    display: block;
+    width: 100%;
+    height: 78px;
+    object-fit: cover;
+    background: #eff6ff;
+}
+
+.preference-image-option input,
+.preference-chip-option input {
+    accent-color: var(--primary-color);
+}
+
+.preference-image-option span,
+.preference-image-option small {
+    padding: 0 0.65rem;
+}
+
+.preference-image-option span {
+    color: #1e293b;
+    font-weight: 650;
+}
+
+.preference-image-option small {
+    padding-bottom: 0.65rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.preference-chip-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.preference-chip-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #dbe3ee;
+    border-radius: 999px;
+    background: #fff;
+    color: #334155;
+    cursor: pointer;
+}
+
+.preference-chip-option:has(input:checked) {
+    border-color: #60a5fa;
+    background: #eff6ff;
+    color: #1d4ed8;
 }
 
 .preferences-empty {
@@ -317,6 +444,63 @@ button:disabled {
 .preference-item-value {
     color: var(--text-muted);
     overflow-wrap: anywhere;
+}
+
+.hotel-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.hotel-option-card {
+    overflow: hidden;
+    border: 1px solid #dbe3ee;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+.hotel-option-image {
+    display: block;
+    width: 100%;
+    height: 170px;
+    object-fit: cover;
+    background: #eff6ff;
+}
+
+.hotel-option-content {
+    padding: 12px;
+}
+
+.hotel-price-note {
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 0.76rem;
+}
+
+.flight-option-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid #dbe3ee;
+    border-radius: 9px;
+    background: #f8fafc;
+}
+
+.flight-placeholder {
+    flex: 0 0 128px;
+    width: 128px;
+    height: 58px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #eff6ff;
+}
+
+.flight-option-content {
+    min-width: 0;
+    flex: 1;
 }
 
 @media (max-width: 520px) {
@@ -616,6 +800,21 @@ button:disabled {
 
     .ws-input-area button {
         width: 100%;
+    }
+
+    .flight-option-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .flight-placeholder {
+        width: 100%;
+        height: 76px;
+        flex-basis: auto;
+    }
+
+    .hotel-options-grid {
+        grid-template-columns: 1fr;
     }
 
     .actions {
