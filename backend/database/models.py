@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, ForeignKey, text
+from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, ForeignKey, Text, UniqueConstraint, text
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -67,5 +67,37 @@ class TravelPreference(Base):
         default="unspecified",
         server_default=text("'unspecified'"),
     )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class TripPlan(Base):
+    """An authenticated user's latest planning snapshot; it is not a booking."""
+    __tablename__ = "trip_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    state_json = Column(Text, nullable=False)
+    replan_attempts = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class TripPlanChange(Base):
+    """A proposed trip snapshot awaiting an explicit user decision."""
+    __tablename__ = "trip_plan_changes"
+    __table_args__ = (
+        UniqueConstraint("trip_id", "request_key", name="uq_trip_plan_change_request"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trip_plans.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    request_key = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="pending")
+    original_json = Column(Text, nullable=False)
+    proposed_json = Column(Text, nullable=False)
+    response_json = Column(Text, nullable=False)
+    changes_json = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
