@@ -354,26 +354,24 @@ class ReplanningService:
             arrival = datetime.fromisoformat(str(arrival_raw).replace("Z", "+00:00"))
         except (TypeError, ValueError):
             arrival = None
-        if arrival is None:
-            return
-
-        arrival_minutes = arrival.hour * 60 + arrival.minute
-        arrival_date = arrival.date().isoformat()
-        for day in itinerary.get("days") or []:
-            if day.get("date") != arrival_date:
-                continue
-            for activity in day.get("activities") or []:
-                start = _parse_time(activity.get("start_time"))
-                if start is not None and start < arrival_minutes:
-                    conflicts.append({
-                        "code": "activity_before_arrival",
-                        "date": arrival_date,
-                        "message": (
-                            f"'{activity.get('title', 'An activity')}' starts before the "
-                            "available flight's arrival time."
-                        ),
-                    })
-                    return
+        if arrival is not None:
+            arrival_minutes = arrival.hour * 60 + arrival.minute
+            arrival_date = arrival.date().isoformat()
+            for day in itinerary.get("days") or []:
+                if day.get("date") != arrival_date:
+                    continue
+                for activity in day.get("activities") or []:
+                    start = _parse_time(activity.get("start_time"))
+                    if start is not None and start < arrival_minutes:
+                        conflicts.append({
+                            "code": "activity_before_arrival",
+                            "date": arrival_date,
+                            "message": (
+                                f"'{activity.get('title', 'An activity')}' starts before the "
+                                "available flight's arrival time."
+                            ),
+                        })
+                        break
 
         outbound_id = _field(options[0], "option_id")
         return_leg = _field(options[0], "return_leg")
@@ -408,8 +406,8 @@ class ReplanningService:
                             f"'{activity.get('title', 'An activity')}' ends after the "
                             "available return flight's departure time."
                         ),
-                    })
-                    return
+                        })
+                        break
 
     @staticmethod
     def _detect_budget_conflict(state, saved_preferences, conflicts):

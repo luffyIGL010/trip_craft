@@ -169,9 +169,14 @@ class MasterAgent:
             plan.travelers = plan.travelers or previous_plan.get("travelers")
             if plan.budget.amount is None:
                 previous_budget = previous_plan.get("budget") or {}
-                plan.budget.amount = previous_budget.get("amount")
-                plan.budget.currency = previous_budget.get("currency") or plan.budget.currency
-                plan.budget.basis = previous_budget.get("basis")
+                if not re.search(
+                    r"\b(?:budget|spend|cost|price|under|below|up to)\b|(?:₹|INR|USD|EUR|GBP)\s*\d",
+                    user_message,
+                    re.IGNORECASE,
+                ):
+                    plan.budget.amount = previous_budget.get("amount")
+                    plan.budget.currency = previous_budget.get("currency") or plan.budget.currency
+                    plan.budget.basis = previous_budget.get("basis")
             previous_tasks = previous_plan.get("tasks") or []
             for task in previous_tasks:
                 if task in {"find_transport", "find_hotel", "find_hotels"} and task not in plan.tasks:
@@ -179,6 +184,21 @@ class MasterAgent:
             previous_itinerary = (current_trip.get("itinerary_results") or {}).get("status")
             if previous_itinerary == "success" and "create_itinerary" not in plan.tasks:
                 plan.tasks.append("create_itinerary")
+        elif not plan.destination or plan.destination.strip().casefold() in {
+            "unknown",
+            "unknown destination",
+        }:
+            saved_destination = next(
+                (
+                    preference.get("value", "").strip()
+                    for preference in (saved_preferences or [])
+                    if preference.get("category") == "destination"
+                    and preference.get("value", "").strip()
+                ),
+                None,
+            )
+            if saved_destination:
+                plan.destination = saved_destination
 
         wants_itinerary = (
             "create_itinerary" in plan.tasks
@@ -270,7 +290,7 @@ class MasterAgent:
             if accommodation_style is None:
                 accommodation_style = next(
                     (
-                        preference.get("value", "").lower()
+                        preference.get("value", "").partition(" — ")[0].lower()
                         for preference in applicable_preferences
                         if preference.get("category") == "accommodation"
                     ),

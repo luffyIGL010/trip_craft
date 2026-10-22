@@ -288,6 +288,10 @@ button:disabled {
     border-radius: var(--border-radius-sm);
 }
 
+.preferences-budget.hidden {
+    display: none;
+}
+
 .preferences-form .actions {
     grid-column: 1 / -1;
 }

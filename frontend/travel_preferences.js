@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         choicesContainer.classList.toggle('hidden', isBudget || !choices[categoryInput.value]);
         valueGroup.classList.toggle('hidden', isBudget);
         detailsGroup.classList.toggle('hidden', isBudget);
-        valueInput.required = !isBudget && selectedValues.length === 0;
+        valueInput.required = !isBudget && !choices[categoryInput.value];
         valueLabel.textContent = choices[categoryInput.value]
             ? 'Custom option (optional)'
             : 'Preference';

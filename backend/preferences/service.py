@@ -47,6 +47,7 @@ def accommodation_preference_from_request(message: str) -> Optional[str]:
     if not match:
         return None
     value = re.sub(r"\s+", " ", match.group(1).casefold()).strip()
+    value = value.split(" — ", 1)[0]
     return "mid-range" if value == "standard" else value
 
 

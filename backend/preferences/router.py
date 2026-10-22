@@ -79,6 +79,19 @@ class PreferenceInput(BaseModel):
             "vacation rental",
             "camps or cottages",
             "no preference",
+        } and value.partition(" — ")[0].casefold() not in {
+            "budget",
+            "hostel",
+            "standard hotel",
+            "premium hotel",
+            "mid-range",
+            "luxury",
+            "resort",
+            "homestay",
+            "guesthouse",
+            "vacation rental",
+            "camps or cottages",
+            "no preference",
         }:
             raise ValueError("Choose a supported accommodation style")
         if category == "pace" and value.lower() not in {
