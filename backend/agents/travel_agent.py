@@ -312,7 +312,11 @@ class TravelAgent:
                     for segment in outbound_flights
                     if isinstance(segment.get("duration", 0), (int, float))
                 )
-                outbound_duration = outbound_duration or f.get("total_duration", 0)
+                outbound_duration = outbound_duration or (
+                    f.get("total_duration", 0)
+                    if trip_split_index is None
+                    else 0
+                )
                 duration_str = (
                     f"{outbound_duration // 60}h {outbound_duration % 60}m"
                     if outbound_duration
@@ -331,7 +335,6 @@ class TravelAgent:
                         for segment in returning_flights
                         if isinstance(segment.get("duration", 0), (int, float))
                     )
-                    return_duration = return_duration or f.get("total_duration")
                     return_leg = build_leg({
                         **f,
                         "flights": returning_flights,

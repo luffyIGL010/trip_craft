@@ -157,6 +157,7 @@ class PreferenceApiTests(unittest.TestCase):
                         stops=0,
                         price=10000,
                         currency="INR",
+                        price_scope="party_total",
                         trip_type="round_trip",
                         outbound_leg=FlightLeg(
                             provider="Air",
@@ -450,6 +451,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
                     stops=0,
                     price=300000,
                     currency="INR",
+                    price_scope="party_total",
                     price_label="Provider itinerary price for 2 travelers (round trip)",
                     trip_type="round_trip",
                     outbound_leg=FlightLeg(
@@ -530,6 +532,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
                     stops=0,
                     price=300000,
                     currency="INR",
+                    price_scope="party_total",
                     price_label="Provider itinerary price for search requested with 2 travelers (round trip)",
                     trip_type="round_trip",
                     outbound_leg=FlightLeg(
@@ -608,6 +611,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             stops=0,
             price=10000,
             currency="INR",
+            price_scope="party_total",
             trip_type="round_trip",
             outbound_leg=FlightLeg(
                 provider="Air",
@@ -650,6 +654,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             stops=0,
             price=10000,
             currency="INR",
+            price_scope="party_total",
             trip_type="round_trip",
             outbound_leg=FlightLeg(
                 provider="Air",
@@ -710,6 +715,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
                 stops=0,
                 price=10000,
                 currency="INR",
+                price_scope="party_total",
                 trip_type="round_trip",
                 outbound_leg=FlightLeg(
                     provider="Air",
