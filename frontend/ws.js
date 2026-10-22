@@ -410,19 +410,24 @@ document.addEventListener('DOMContentLoaded', () => {
                             budgetStatusHtml = `<div style="margin-top:6px;"><strong>${escapeHtml(basisLabel)}: ${escapeHtml(budgetLabels[budgetComparison.status] || 'not compared')}${budgetRange}${comparedAmount}</strong></div>`;
                         }
                         // Embed a sentinel div with a data-combo-idx for PayPal button mounting
+                        const checkoutAllowed = !replanning || replanning.status !== 'awaiting_approval';
                         const comboIdx = checkoutCombos.length;
-                        checkoutCombos.push({
-                            flight_option: est.flight_option,
-                            hotel_option:  est.hotel_option,
-                            flight_price:  est.flight_price,
-                            hotel_price:   est.hotel_total,
-                            nights:        combinedTripCost.hotel_nights || 0,
-                            travelers:     combinedTripCost.travelers || 1,
-                            destination:   plan ? (plan.destination || '') : '',
-                            price_confidence: est.price_confidence || 'provisional',
-                            price_warning: est.price_warning || ''
-                        });
-                        const checkoutMarkup = `<div class="pp-btn-mount" data-combo-idx="${comboIdx}" style="margin-top:4px;"></div>`;
+                        if (checkoutAllowed) {
+                            checkoutCombos.push({
+                                flight_option: est.flight_option,
+                                hotel_option:  est.hotel_option,
+                                flight_price:  est.flight_price,
+                                hotel_price:   est.hotel_total,
+                                nights:        combinedTripCost.hotel_nights || 0,
+                                travelers:     combinedTripCost.travelers || 1,
+                                destination:   plan ? (plan.destination || '') : '',
+                                price_confidence: est.price_confidence || 'provisional',
+                                price_warning: est.price_warning || ''
+                            });
+                        }
+                        const checkoutMarkup = checkoutAllowed
+                            ? `<div class="pp-btn-mount" data-combo-idx="${comboIdx}" style="margin-top:4px;"></div>`
+                            : `<div style="margin-top:7px; font-size:0.8rem; color:#92400e;">Checkout is hidden until this proposed plan is approved.</div>`;
                         html += `<div style="border:1px solid #ddd6fe; border-radius:6px; padding:12px; background:#f5f3ff;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <strong style="color:#5b21b6; font-size:0.95rem;">Combination ${idx + 1}</strong>
@@ -525,7 +530,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Mount PayPal checkout buttons into sentinel elements after DOM is attached
-        if (typeof window.renderCheckoutButton === 'function' && combinedTripCost && combinedTripCost.estimates) {
+        if (
+            typeof window.renderCheckoutButton === 'function'
+            && combinedTripCost
+            && combinedTripCost.estimates
+            && (!replanning || replanning.status !== 'awaiting_approval')
+        ) {
             const checkoutCombos = [];
             (combinedTripCost.estimates || []).forEach(est => {
                 if (est.status === 'available') {
