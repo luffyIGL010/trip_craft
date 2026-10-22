@@ -51,13 +51,20 @@ class TransportAPIClient:
 
                 # If round-trip, query return flights for the selected departure token if available
                 return_data = None
+                return_for_departure_token = None
                 if return_date:
-                    best_flights = outbound_data.get("best_flights", [])
-                    dep_token = None
-                    if best_flights:
-                        dep_token = best_flights[0].get("departure_token")
-                    elif outbound_data.get("other_flights"):
-                        dep_token = outbound_data["other_flights"][0].get("departure_token")
+                    departure_flights = (
+                        outbound_data.get("best_flights", [])
+                        + outbound_data.get("other_flights", [])
+                    )
+                    dep_token = next(
+                        (
+                            flight.get("departure_token")
+                            for flight in departure_flights
+                            if flight.get("departure_token")
+                        ),
+                        None,
+                    )
 
                     if dep_token:
                         try:
@@ -78,6 +85,7 @@ class TransportAPIClient:
                             ret_res = await client.get(self.base_url, params=return_params, timeout=15.0)
                             if ret_res.status_code == 200:
                                 return_data = ret_res.json()
+                                return_for_departure_token = dep_token
                         except Exception as ex:
                             logger.warning(f"Could not fetch return flight details: {ex}")
 
@@ -85,6 +93,7 @@ class TransportAPIClient:
                     "is_mock": False,
                     "data": outbound_data,
                     "return_data": return_data,
+                    "return_for_departure_token": return_for_departure_token,
                     "trip_type": "round_trip" if return_date else "one_way",
                     "outbound_date": outbound_date,
                     "return_date": return_date,

@@ -324,10 +324,12 @@ class MasterAgent:
                         == "INR"
                     )
                     priced_scope_matches_trip = (
-                        fl.get("trip_type") == f_type
-                        and f_type == ("round_trip" if tr.get("trip_type") == "round_trip" else "one_way")
+                        f_type == tr.get("trip_type")
                     )
-                    priced_scope_is_verified = f_type in {"round_trip", "one_way"}
+                    priced_scope_is_verified = (
+                        f_type in {"round_trip", "one_way"}
+                        and fl.get("price_scope") == "party_total"
+                    )
 
                     if (
                         same_currency
@@ -400,7 +402,7 @@ class MasterAgent:
                             "status": "unavailable",
                             "message": (
                                 "Combined cost unavailable (currency mismatch, "
-                                "unverified provider trip scope, or reliable price "
+                                "unverified provider trip or traveler price scope, or reliable price "
                                 "unavailable for one or both options)"
                             )
                         })

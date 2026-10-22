@@ -96,14 +96,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const isRoundTrip = transportResults.trip_type === "round_trip" || !!transportResults.return_date;
             const priceLabelText = transportResults.price_label || "Provider price scope not specified";
             const returnFareNotice = isRoundTrip
-                ? "The separately returned return-leg options below are not linked to these priced options."
-                : "This is a one-way itinerary; no return fare is included.";
+                ? "A round-trip search was requested; an outbound price does not include a verified return fare unless that option explicitly shows both legs."
+                : "A one-way search was requested; no return fare is included.";
 
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid var(--primary-color);">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h4 style="margin:0;">✈️ Transport Options</h4>
                     <div>
-                        ${isRoundTrip ? '<span class="badge" style="background:#0284c7; color:white; margin-right:4px;">Round Trip</span>' : '<span class="badge" style="background:#64748b; color:white; margin-right:4px;">One Way</span>'}
+                        ${isRoundTrip ? '<span class="badge" style="background:#0284c7; color:white; margin-right:4px;">Round-trip search</span>' : '<span class="badge" style="background:#64748b; color:white; margin-right:4px;">One-way search</span>'}
                         ${transportResults.is_mock ? '<span class="badge" style="background:#eab308; color:white;">Mock Data</span>' : ''}
                     </div>
                 </div>`;
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Accurate Total Price Callout (Requirement 4)
                 html += `<div style="font-size:0.85rem; color:#0369a1; background:#f0f9ff; padding:6px 10px; border-radius:4px; margin:8px 0; border:1px solid #bae6fd;">
-                    <strong>💰 Price Notice:</strong> Each fare is the <strong>${escapeHtml(priceLabelText)}</strong>. ${returnFareNotice}
+                    <strong>💰 Price Notice:</strong> ${escapeHtml(priceLabelText)}. ${returnFareNotice}
                 </div>`;
 
                 // Outbound Flights Section (Requirement 3)
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (transportResults.return_options && transportResults.return_options.length > 0) {
                     html += `<div style="margin-top:14px;">
                         <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                            <span>🛬 Separately returned return-leg options (not paired to priced options)</span>
+                            <span>🛬 Return-leg options for the selected outbound (return fare not included)</span>
                             <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.destination} → ${transportResults.origin} • ${transportResults.return_date || ''})</span>
                         </div>
                         <div style="display:flex; flex-direction:column; gap:8px;">`;
@@ -180,6 +180,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${opt.outbound_leg.flight_number}</span>` : '';
                         const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${opt.outbound_leg.airplane}` : '';
 
+                        const pairedOutbound = opt.paired_outbound_option_id
+                            ? ` • Selected with outbound itinerary ${escapeHtml(opt.paired_outbound_option_id)}`
+                            : '';
                         html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f0fdf4;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                 <div style="display:flex; align-items:center;">
@@ -189,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span style="font-size:0.8rem; color:#166534; font-weight:500; background:#dcfce7; padding:2px 6px; border-radius:4px;">Return Flight</span>
                             </div>
                             <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
-                                <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}</div>
+                                <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}${pairedOutbound}</div>
                                 <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
                             </div>
                         </div>`;

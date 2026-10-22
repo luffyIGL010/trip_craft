@@ -68,6 +68,33 @@ def build_leg(flight_data: dict) -> FlightLeg:
         airplane=airplane
     )
 
+
+def _has_round_trip_route(flight_data: dict, origin: str, destination: str) -> bool:
+    flights = flight_data.get("flights") or []
+    for split_index in range(1, len(flights)):
+        outbound = flights[:split_index]
+        returning = flights[split_index:]
+        if (
+            outbound[0].get("departure_airport", {}).get("id") == origin
+            and outbound[-1].get("arrival_airport", {}).get("id") == destination
+            and returning[0].get("departure_airport", {}).get("id") == destination
+            and returning[-1].get("arrival_airport", {}).get("id") == origin
+        ):
+            outbound_connects = all(
+                left.get("arrival_airport", {}).get("id")
+                == right.get("departure_airport", {}).get("id")
+                for left, right in zip(outbound, outbound[1:])
+            )
+            return_connects = all(
+                left.get("arrival_airport", {}).get("id")
+                == right.get("departure_airport", {}).get("id")
+                for left, right in zip(returning, returning[1:])
+            )
+            if outbound_connects and return_connects:
+                return True
+    return False
+
+
 # Recognized ambiguous states and regions that are not specific commercial airports
 AMBIGUOUS_REGIONS: dict = {
     "UTTARAKHAND": "Uttarakhand is an Indian state with multiple regional airports (such as Dehradun - DED or Pantnagar - PGH).",
@@ -225,23 +252,41 @@ class TravelAgent:
             for f in raw_flights[:5]: # Limit to top 5 options
                 airline = extract_airline(f)
                 provider_type = str(f.get("type") or "").strip().casefold()
-                if provider_type in {"round trip", "round-trip", "roundtrip"}:
+                if (
+                    provider_type in {"round trip", "round-trip", "roundtrip"}
+                    and _has_round_trip_route(f, origin_code, dest_code)
+                ):
                     option_trip_type = "round_trip"
                 elif provider_type in {"one way", "one-way", "oneway"}:
                     option_trip_type = "one_way"
                 else:
                     option_trip_type = None
-                if option_trip_type:
+                traveler_count = (
+                    f"{travelers} traveler{'s' if travelers != 1 else ''}"
+                )
+                if option_trip_type == "round_trip":
                     option_price_label = (
-                        f"{price_source} itinerary price for search requested with "
-                        f"{travelers} traveler{'s' if travelers != 1 else ''} "
-                        f"({option_trip_type.replace('_', ' ')})"
+                        f"{price_source}-reported round-trip itinerary fare; "
+                        f"traveler price basis unverified (search requested with "
+                        f"{traveler_count})"
+                    )
+                elif option_trip_type == "one_way":
+                    option_price_label = (
+                        f"{price_source}-reported one-way outbound fare; traveler "
+                        f"price basis unverified (search requested with "
+                        f"{traveler_count})"
+                    )
+                elif provider_type in {"round trip", "round-trip", "roundtrip"}:
+                    option_price_label = (
+                        f"{price_source}-reported outbound-only fare; return fare "
+                        f"not included or verified; traveler price basis unverified "
+                        f"(search requested with {traveler_count})"
                     )
                 else:
                     option_price_label = (
-                        f"{price_source} price for search requested with "
-                        f"{travelers} traveler{'s' if travelers != 1 else ''}; "
-                        "trip scope unspecified"
+                        f"{price_source}-reported fare; itinerary and traveler "
+                        f"price scopes unverified (search requested with "
+                        f"{traveler_count})"
                     )
                 try:
                     price = float(f["price"])
@@ -272,6 +317,7 @@ class TravelAgent:
                     price=price,
                     currency="INR",
                     price_type="provider_returned",
+                    price_scope="unverified",
                     price_label=option_price_label,
                     trip_type=option_trip_type,
                     outbound_leg=outbound_leg,
@@ -298,6 +344,14 @@ class TravelAgent:
                     ret_leg = build_leg(rf)
 
                     return_options.append(TransportOption(
+                        option_id=(
+                            str(rf.get("departure_token") or rf.get("flight_id") or rf.get("id"))
+                            if rf.get("departure_token") or rf.get("flight_id") or rf.get("id")
+                            else None
+                        ),
+                        paired_outbound_option_id=api_response.get(
+                            "return_for_departure_token"
+                        ),
                         provider=ret_provider,
                         departure=ret_dep,
                         arrival=ret_arr,
@@ -307,7 +361,7 @@ class TravelAgent:
                         currency="INR",
                         price_type="unavailable",
                         price_label=None,
-                        trip_type="round_trip",
+                        trip_type=None,
                         outbound_leg=ret_leg,
                         return_leg=None
                     ))
@@ -330,9 +384,9 @@ class TravelAgent:
                 travelers=travelers,
                 price_type="provider_returned",
                 price_label=(
-                    f"{price_source} prices from a search requested with "
-                    f"{travelers} traveler{'s' if travelers != 1 else ''}; "
-                    "trip scope is reported per option when available"
+                    f"Search requested with {travelers} traveler"
+                    f"{'s' if travelers != 1 else ''}; each fare's itinerary and "
+                    "traveler price scope is reported per option when verified"
                 ),
                 options=options,
                 return_options=return_options,

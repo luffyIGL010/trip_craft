@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 class FlightLeg(BaseModel):
     provider: str
@@ -14,6 +14,7 @@ class FlightLeg(BaseModel):
 
 class TransportOption(BaseModel):
     option_id: Optional[str] = None
+    paired_outbound_option_id: Optional[str] = None
     provider: str
     departure: str
     arrival: str
@@ -22,6 +23,7 @@ class TransportOption(BaseModel):
     price: Optional[float] = None
     currency: str = "INR"
     price_type: str = "provider_returned"
+    price_scope: Literal["party_total", "per_traveler", "unverified"] = "unverified"
     price_label: Optional[str] = None
     trip_type: Optional[str] = "one_way"  # "one_way" or "round_trip"
     outbound_leg: Optional[FlightLeg] = None
