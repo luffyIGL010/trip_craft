@@ -1,5 +1,3 @@
-import asyncio
-import json
 import unittest
 from datetime import date, timedelta
 from urllib.parse import parse_qs
@@ -122,7 +120,9 @@ class OpenMeteoWeatherServiceTests(unittest.IsolatedAsyncioTestCase):
                 return httpx.Response(200, json=forecast or forecast_payload(), request=request)
             raise AssertionError(f"Unexpected Open-Meteo URL: {request.url}")
 
-        return OpenMeteoWeatherService(transport=httpx.MockTransport(handler))
+        service = OpenMeteoWeatherService(transport=httpx.MockTransport(handler))
+        service.calls = self.calls
+        return service
 
     async def test_uses_destination_geocoding_and_returns_live_forecast_fields(self):
         service = self.make_service()
@@ -192,7 +192,7 @@ class OpenMeteoWeatherServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("No matching destination", invalid["message"])
         self.assertEqual(ambiguous["status"], "ambiguous")
         self.assertIn("multiple countries", ambiguous["message"])
-        self.assertFalse(any(FORECAST_URL in str(call.url) for call in ambiguous_service.calls))
+        self.assertFalse(any(FORECAST_URL in str(call.url) for call in self.calls))
 
     async def test_invalid_coordinates_and_qualified_location_handling(self):
         invalid_coordinates = self.make_service(geocoding_results={"results": [
