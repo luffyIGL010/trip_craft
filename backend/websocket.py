@@ -10,6 +10,7 @@ from database.models import TripPlan, TripPlanChange, User
 from auth.auth import decode_access_token
 from agents.master_agent import MasterAgent
 from services.replanning import (
+    ReplanAttemptLimitReached,
     ReplanningService,
     max_replan_attempts,
     request_key,
@@ -211,7 +212,21 @@ async def websocket_endpoint(
                                 user.id,
                                 key,
                                 original_state,
+                                max_replan_attempts(),
                             )
+                        except ReplanAttemptLimitReached:
+                            await websocket.send_json({
+                                "type": "replanning",
+                                "data": {
+                                    "trip_id": trip.id,
+                                    "status": "attempt_limit_reached",
+                                    "message": (
+                                        "The maximum number of re-planning attempts has been reached. "
+                                        "Start a new trip plan or review the available alternatives."
+                                    ),
+                                },
+                            })
+                            continue
                         except IntegrityError:
                             db.rollback()
                             existing = db.query(TripPlanChange).filter(

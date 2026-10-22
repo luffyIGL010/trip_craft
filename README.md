@@ -86,7 +86,7 @@ GROQ_API_KEY=<your-groq-api-key>
 
 ## Phase 9: Agentic Trip Re-planning
 
-Authenticated chat plans are stored as owner-scoped planning snapshots. Ask to replan a saved trip to have the existing flight, hotel, and itinerary agents reuse unchanged search results or search changed dates once, then present supported conflicts and alternatives. Proposed changes require explicit approval; approval only updates the saved planning snapshot and never books or pays for travel. Repeated identical requests are idempotent, and attempt limits prevent unbounded retries. The current integrations do not include live weather or booking APIs, so weather conflicts and booking/rebooking are not claimed or performed.
+Authenticated chat plans are stored as owner-scoped planning snapshots. Ask to replan a saved trip to have the existing flight, hotel, and itinerary agents reuse unchanged search results or search changed trip inputs once, then present supported conflicts and alternatives. Proposed changes require explicit approval; approval only updates the saved planning snapshot and never books or pays for travel. Repeated identical requests are idempotent, and attempt limits prevent unbounded retries. The current integrations do not include live weather or booking APIs, so weather conflicts and booking/rebooking are not claimed or performed.
 
 ### 3. Start the Server
 

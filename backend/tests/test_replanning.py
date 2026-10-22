@@ -16,6 +16,7 @@ from database.database import Base, get_db
 from database.models import TripPlan, User
 from schemas.itinerary import ItineraryResult
 from services.replanning import (
+    ReplanAttemptLimitReached,
     ReplanningService,
     max_replan_attempts,
     request_key,
@@ -302,6 +303,23 @@ class ReplanningPersistenceTests(unittest.TestCase):
         first = request_key(7, 12, "Replan this trip")
         second = request_key(7, 12, "  REPLAN   THIS TRIP ")
         self.assertEqual(first, second)
+
+    def test_atomic_attempt_reservation_enforces_configured_limit(self):
+        with self.session_factory() as db:
+            trip = ReplanningService.save_initial_plan(db, self.owner.id, _state())
+            trip.replan_attempts = 1
+            db.commit()
+            with self.assertRaisesRegex(ReplanAttemptLimitReached, "attempt limit"):
+                ReplanningService.reserve_attempt(
+                    db,
+                    trip,
+                    self.owner.id,
+                    "over-limit",
+                    _state(),
+                    limit=1,
+                )
+            db.refresh(trip)
+            self.assertEqual(trip.replan_attempts, 1)
 
 
 class ReplanningOrchestrationTests(unittest.IsolatedAsyncioTestCase):
