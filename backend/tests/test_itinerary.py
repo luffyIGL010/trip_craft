@@ -533,6 +533,7 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_explicit_weather_request_runs_weather_without_itinerary(self):
         agent = MasterAgent()
+        agent.client = None
         plan = make_plan(tasks=[])
         weather = {
             "status": "success",
@@ -609,6 +610,7 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_weather_failure_does_not_block_itinerary_generation(self):
         agent = MasterAgent()
+        agent.client = None
         plan = make_plan(tasks=[])
         agent._mock_response = Mock(return_value=plan)
         agent.weather_service.get_trip_weather = AsyncMock(
