@@ -164,6 +164,25 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
                     ),
                 )
             ],
+            return_options=[
+                TransportOption(
+                    option_id="return-1",
+                    paired_outbound_option_id="flight-1",
+                    provider="Air",
+                    departure="2027-05-03 17:30",
+                    arrival="2027-05-03 20:00",
+                    duration="2h30m",
+                    stops=0,
+                    outbound_leg=FlightLeg(
+                        provider="Air",
+                        flight_number="AB 124",
+                        departure_airport="GOI",
+                        departure_time="2027-05-03T17:30",
+                        arrival_airport="DEL",
+                        arrival_time="2027-05-03T20:00",
+                    ),
+                )
+            ],
         )
         hotels = HotelResult(
             status="success",
@@ -214,6 +233,10 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             request_context["flight_timing"]["return_departure"]["time"],
             "17:30",
+        )
+        self.assertEqual(
+            request_context["flight_options"][0]["paired_return_options"][0]["option_id"],
+            "return-1",
         )
         self.assertEqual(request_context["hotel_options"][0]["name"], "Coast Stay")
         self.assertEqual(
@@ -425,6 +448,39 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request_context["flight_timing"]["status"], "mock")
         self.assertIsNone(request_context["flight_timing"]["arrival"])
         self.assertIn("mock data", result.notice)
+
+    async def test_fixture_hotel_prices_are_not_passed_as_live_budget_data(self):
+        agent, client = configured_itinerary_agent({
+            "summary": "A relaxed three-day plan.",
+            "days": make_days(),
+        })
+        hotels = HotelResult(
+            status="success",
+            is_sandbox=True,
+            options=[
+                HotelOption(
+                    option_id="fixture-hotel",
+                    name="Sample Stay",
+                    address="Goa",
+                    nightly_price=1000,
+                    total_price=2000,
+                    currency="INR",
+                    is_fixture_price=True,
+                    is_sandbox=True,
+                )
+            ],
+        )
+
+        result = await agent.execute(make_plan(), hotel_results=hotels)
+
+        context = json.loads(
+            client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        )
+        self.assertEqual(result.status, "success")
+        self.assertTrue(context["hotel_options"][0]["is_fixture_price"])
+        self.assertTrue(context["hotel_options"][0]["is_sandbox"])
+        self.assertNotIn("total_price", context["hotel_options"][0])
+        self.assertNotIn("nightly_price", context["hotel_options"][0])
 
     async def test_requires_model_configuration_instead_of_fabricating_itinerary(self):
         result = await ItineraryAgent().execute(make_plan())

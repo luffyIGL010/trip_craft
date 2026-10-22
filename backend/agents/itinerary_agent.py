@@ -16,7 +16,7 @@ ITINERARY_SYSTEM_PROMPT = """You are a travel itinerary assistant. Return only a
 
 Create exactly one day for each supplied trip date, in order. Use destination-local 24-hour times. Group nearby suggestions together, avoid repeating attractions, and keep each day practical with breaks, meals, or free time where appropriate. Respect the supplied interests, dietary/accessibility preferences, trip pace, traveler count, and budget without inventing prices.
 
-All activities are AI-generated suggestions, not confirmed reservations or live recommendations. Do not claim current opening hours, ticket prices, availability, transit times, or travel durations. Do not invent flight or hotel bookings. Treat hotel options as candidates, not selected accommodations.
+All activities are AI-generated suggestions, not confirmed reservations or live recommendations. Do not claim current opening hours, ticket prices, availability, transit times, or travel durations. Do not invent flight or hotel bookings. Treat hotel options as candidates, not selected accommodations; any supplied hotel prices are search results, not guaranteed rates. Do not convert currencies or claim the trip fits the budget based on hotel prices alone.
 
 When flight timing constraints are supplied, schedule no activity before the destination arrival time on its date or after the return departure time on its date. These times are local times and should be treated as hard boundaries. If flight timing is unavailable or marked as mock data, do not infer arrival or departure times from it. Do not add facts that are absent from the supplied trip context."""
 
@@ -258,11 +258,21 @@ class ItineraryAgent:
             return_options = _field(transport_results, "return_options", []) or []
             for option in return_options[:10]:
                 paired_id = _field(option, "paired_outbound_option_id")
-                if paired_id and any(
-                    flight.get("option_id") == paired_id for flight in flight_options
-                ):
+                paired_flight = next(
+                    (
+                        flight
+                        for flight in flight_options
+                        if paired_id and flight.get("option_id") == paired_id
+                    ),
+                    None,
+                )
+                if paired_flight:
                     reference_option_id = reference_option_id or paired_id
                     return_leg = _leg_context(_field(option, "outbound_leg"))
+                    paired_flight.setdefault("paired_return_options", []).append({
+                        "option_id": _field(option, "option_id"),
+                        "leg": return_leg,
+                    })
                     departure = _parse_provider_datetime(return_leg.get("departure_time"))
                     if departure:
                         departure_candidates.append((paired_id, departure))
@@ -327,7 +337,8 @@ class ItineraryAgent:
         hotels = []
         if _field(hotel_results, "status") == "success":
             for hotel in (_field(hotel_results, "options", []) or [])[:5]:
-                hotels.append({
+                is_fixture_price = bool(_field(hotel, "is_fixture_price", False))
+                hotel_context = {
                     key: _field(hotel, key)
                     for key in (
                         "option_id",
@@ -335,12 +346,17 @@ class ItineraryAgent:
                         "property_type",
                         "address",
                         "city",
-                        "nightly_price",
-                        "total_price",
-                        "currency",
                     )
                     if _field(hotel, key) is not None
-                })
+                }
+                hotel_context["is_fixture_price"] = is_fixture_price
+                hotel_context["is_sandbox"] = bool(_field(hotel, "is_sandbox", False))
+                if not is_fixture_price:
+                    for key in ("nightly_price", "total_price", "currency"):
+                        value = _field(hotel, key)
+                        if value is not None:
+                            hotel_context[key] = value
+                hotels.append(hotel_context)
 
         context = {
             "destination": plan.destination,
