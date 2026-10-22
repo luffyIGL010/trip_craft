@@ -191,9 +191,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div style="display:flex; flex-direction:column; gap:8px;">`;
 
                     transportResults.return_options.forEach((opt, idx) => {
-                        const providerName = opt.provider || "Provider Not Specified";
-                        const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${opt.outbound_leg.flight_number}</span>` : '';
-                        const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${opt.outbound_leg.airplane}` : '';
+                        const providerName = escapeHtml(opt.provider || "Provider Not Specified");
+                        const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${escapeHtml(opt.outbound_leg.flight_number)}</span>` : '';
+                        const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${escapeHtml(opt.outbound_leg.airplane)}` : '';
 
                         const pairedOutbound = opt.paired_outbound_option_id
                             ? ` • Selected with outbound itinerary ${escapeHtml(opt.paired_outbound_option_id)}`
@@ -207,8 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span style="font-size:0.8rem; color:#166534; font-weight:500; background:#dcfce7; padding:2px 6px; border-radius:4px;">Return Flight</span>
                             </div>
                             <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
-                                <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}${pairedOutbound}</div>
-                                <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
+                                <div><strong>Departure:</strong> ${escapeHtml(opt.departure || 'Not provided')} | <strong>Arrival:</strong> ${escapeHtml(opt.arrival || 'Not provided')}${pairedOutbound}</div>
+                                <div><strong>Duration:</strong> ${escapeHtml(opt.duration || 'Not provided')} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : escapeHtml(opt.stops ?? 'Not provided') + ' stop(s)'}${airplaneInfo}</div>
                             </div>
                         </div>`;
                     });
@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>`;
 
-                html += `<div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">`;
+                html += `<div class="hotel-options-grid">`;
 
                 hotelResults.options.forEach((h, idx) => {
                     const hotelName = escapeHtml(h.name || 'Unnamed Property');
@@ -298,15 +298,35 @@ document.addEventListener('DOMContentLoaded', () => {
                         : '';
 
                     let urlHtml = '';
-                    if (h.url && (h.url.startsWith('https://') || h.url.startsWith('http://'))) {
-                        const safeUrl = encodeURI(h.url);
+                    let safeUrl = null;
+                    if (typeof h.url === 'string') {
+                        try {
+                            const parsedUrl = new URL(h.url);
+                            if (parsedUrl.protocol === 'https:' && parsedUrl.hostname && !parsedUrl.username && !parsedUrl.password) {
+                                safeUrl = parsedUrl.href;
+                            }
+                        } catch {
+                            safeUrl = null;
+                        }
+                    }
+                    if (safeUrl) {
                         urlHtml = `<div style="margin-top:6px;">
-                            <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="font-size:0.8rem; color:var(--primary-color); text-decoration:none;">🔗 View on ${platformName} →</a>
+                            <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:0.8rem; color:var(--primary-color); text-decoration:none;">🔗 View on ${platformName} →</a>
                         </div>`;
                     }
 
-                    html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+                    const image = (h.images || []).map(safeImageUrl).find(Boolean)
+                        || 'assets/hotel-placeholder.svg';
+                    const imageAlt = image === 'assets/hotel-placeholder.svg'
+                        ? `Generic accommodation illustration for ${h.name || 'hotel'}; not a property photo`
+                        : `Provider image for ${h.name || 'hotel'}`;
+                    const stayDetails = `${hotelResults.check_in || 'Not provided'} to ${hotelResults.check_out || 'Not provided'}`
+                        + (hotelResults.nights ? ` · ${hotelResults.nights} night${hotelResults.nights === 1 ? '' : 's'}` : '');
+
+                    html += `<article class="hotel-option-card">
+                        <img class="hotel-option-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" width="640" height="360" loading="lazy" onerror="this.onerror=null;this.src='assets/hotel-placeholder.svg';">
+                        <div class="hotel-option-content">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:4px;">
                             <div>
                                 <strong style="color:#0f172a; font-size:0.95rem;">Option ${idx + 1}: ${hotelName}</strong>
                                 <span style="font-size:0.75rem; background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:3px; margin-left:6px; text-transform:capitalize;">${platformName} • ${propType}</span>
@@ -317,11 +337,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
                             ${address ? `<div>📍 ${address}</div>` : ''}
+                            <div>📅 ${escapeHtml(stayDetails)}</div>
                             ${ratingText ? `<div style="color:#b45309; font-weight:500;">${ratingText}</div>` : ''}
+                            <div class="hotel-price-note">Provider search price; final amount and availability require confirmation.</div>
                             ${amenitiesHtml}
                             ${urlHtml}
                         </div>
-                    </div>`;
+                        </div>
+                    </article>`;
                 });
 
                 html += `</div>`;
@@ -490,6 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const conflicts = replanning.conflicts || [];
             const changes = replanning.changes || [];
             const alternatives = replanning.alternatives || [];
+            const checks = replanning.checks_completed || [];
+            const unableChecks = replanning.unable_to_validate || [];
             const needsApproval = replanning.status === 'awaiting_approval'
                 && Number.isInteger(replanning.proposal_id);
             const statusLabels = {
@@ -507,6 +532,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <p style="font-size:0.9rem; color:#475569;">${escapeHtml(replanning.message || '')}</p>
                 ${conflicts.length ? `<div><strong>Detected issues</strong><ul>${conflicts.map(issue => `<li>${escapeHtml(issue.message || issue.code || 'Planning conflict')}</li>`).join('')}</ul></div>` : ''}
+                ${checks.length ? `<div><strong>Checks</strong><ul>${checks.map(check => `<li>${escapeHtml(check.name)}: ${escapeHtml(check.status)}</li>`).join('')}</ul></div>` : ''}
+                ${unableChecks.length ? `<div class="plan-section missing"><strong>Unable to validate</strong><ul>${unableChecks.map(issue => `<li>${escapeHtml(issue.message || issue.code || 'Validation unavailable')}</li>`).join('')}</ul></div>` : ''}
                 ${changes.length ? `<div><strong>${needsApproval ? 'Proposed changes' : 'Changes'}</strong><ul>${changes.map(change => {
                     const priceDiff = Number.isFinite(change.price_difference)
                         ? ` · estimated difference ${change.price_difference > 0 ? '+' : ''}₹${change.price_difference.toLocaleString()}`
