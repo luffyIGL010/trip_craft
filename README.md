@@ -82,6 +82,11 @@ GROQ_API_KEY=<your-groq-api-key>
 - **JWT_SECRET_KEY**: Generate with `openssl rand -hex 32`
 - The backend refuses to start if `JWT_SECRET_KEY` is missing. WebSocket authentication sends the JWT in the handshake subprotocol, not the URL.
 - **GROQ_API_KEY**: Get from [console.groq.com](https://console.groq.com). If not provided, the Master Agent runs in mock mode.
+- **TRIP_REPLAN_MAX_ATTEMPTS** (optional): Maximum re-planning attempts per saved trip (default `3`, valid range `1`–`10`).
+
+## Phase 9: Agentic Trip Re-planning
+
+Authenticated chat plans are stored as owner-scoped planning snapshots. Ask to replan a saved trip to have the existing flight, hotel, and itinerary agents reuse unchanged search results or search changed dates once, then present supported conflicts and alternatives. Proposed changes require explicit approval; approval only updates the saved planning snapshot and never books or pays for travel. Repeated identical requests are idempotent, and attempt limits prevent unbounded retries. The current integrations do not include live weather or booking APIs, so weather conflicts and booking/rebooking are not claimed or performed.
 
 ### 3. Start the Server
 
