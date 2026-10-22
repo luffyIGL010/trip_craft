@@ -461,9 +461,15 @@ class ReplanningService:
             recommended = alternatives[0]
             old_total = cls._lowest_verified_total(original)
             new_total = recommended.get("combined_total")
+            budget = cls._budget_for_state(candidate, saved_preferences or [])
+            budget_source = (
+                "explicit current-trip budget"
+                if cls._explicit_budget_for_state(candidate)
+                else "saved usual budget guideline"
+            )
             changes.append({
                 "field": "flight_hotel_recommendation",
-                "original": "No verified available combination within the saved budget.",
+                "original": f"No verified available combination within the {budget_source}.",
                 "proposed": {
                     "flight_option": recommended.get("flight_option"),
                     "hotel_option": recommended.get("hotel_option"),
@@ -471,7 +477,11 @@ class ReplanningService:
                     "currency": recommended.get("currency"),
                     "confidence": recommended.get("confidence"),
                 },
-                "reason": "This available search combination fits the saved budget.",
+                "reason": (
+                    "This verified search combination fits the explicit current-trip budget."
+                    if cls._explicit_budget_for_state(candidate)
+                    else "This verified search combination is within the saved usual budget guideline."
+                ),
                 "price_difference": (
                     new_total - old_total
                     if old_total is not None and new_total is not None

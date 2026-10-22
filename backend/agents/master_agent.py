@@ -820,6 +820,13 @@ class MasterAgent:
             budget_basis = "per_person"
         elif re.search(r"\b(total trip|whole trip|entire trip|overall budget)\b", msg):
             budget_basis = "total_trip"
+        budget_currency = "INR"
+        if re.search(r"\bUSD\b|\$", user_message, re.IGNORECASE):
+            budget_currency = "USD"
+        elif re.search(r"\bEUR\b|€", user_message, re.IGNORECASE):
+            budget_currency = "EUR"
+        elif re.search(r"\bGBP\b|£", user_message, re.IGNORECASE):
+            budget_currency = "GBP"
 
         # 5. Determine tasks
         is_hotel_intent = "hotel" in msg or "hotels" in msg or "stay" in msg or "accommodation" in msg
@@ -860,7 +867,11 @@ class MasterAgent:
             dates=Dates(start=start_date, end=end_date),
             duration_days=duration,
             travelers=travelers,
-            budget=Budget(amount=budget_amount, basis=budget_basis),
+            budget=Budget(
+                amount=budget_amount,
+                currency=budget_currency,
+                basis=budget_basis,
+            ),
             preferences=[],
             tasks=tasks,
             missing_information=missing
