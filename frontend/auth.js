@@ -10,6 +10,7 @@ function getToken() {
 
 function removeToken() {
     localStorage.removeItem('travelagent_token');
+    sessionStorage.removeItem('travelagent_trip_id');
 }
 
 function showAuthStatus(message, isError = false) {
