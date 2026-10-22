@@ -55,6 +55,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
+    function safeImageUrl(value) {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        try {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return null;
+            return url.href;
+        } catch {
+            return null;
+        }
+    }
+
     function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
@@ -143,25 +154,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display:flex; flex-direction:column; gap:8px;">`;
                 
                 transportResults.options.forEach((opt, idx) => {
-                    const providerName = opt.provider || "Provider Not Specified";
-                    const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${opt.outbound_leg.flight_number}</span>` : '';
-                    const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${opt.outbound_leg.airplane}` : '';
+                    const providerName = escapeHtml(opt.provider || "Provider Not Specified");
+                    const flightNumBadge = opt.outbound_leg && opt.outbound_leg.flight_number ? `<span style="font-size:0.75rem; background:#e2e8f0; color:#334155; padding:2px 6px; border-radius:3px; margin-left:6px;">${escapeHtml(opt.outbound_leg.flight_number)}</span>` : '';
+                    const airplaneInfo = opt.outbound_leg && opt.outbound_leg.airplane ? ` • ${escapeHtml(opt.outbound_leg.airplane)}` : '';
                     
-                    html += `<div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                            <div style="display:flex; align-items:center;">
+                    html += `<div class="flight-option-card">
+                        <img class="flight-placeholder" src="assets/flight-placeholder.svg" alt="Generic airplane illustration — not flight-specific" width="160" height="60" loading="lazy">
+                        <div class="flight-option-content">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
+                            <div style="display:flex; align-items:center; flex-wrap:wrap;">
                                 <strong style="color:#0f172a;">Option ${idx + 1}: ${providerName}</strong>
                                 ${flightNumBadge}
                             </div>
                             <div style="text-align:right;">
-                                <strong style="color:var(--primary-color); font-size:1.05rem;">${opt.price === null || opt.price === undefined ? 'Price unavailable' : `₹${Number(opt.price).toLocaleString()}`}</strong>
+                                <strong style="color:var(--primary-color); font-size:1.05rem;">${opt.price === null || opt.price === undefined ? 'Price unavailable' : `${escapeHtml(opt.currency || 'INR')} ${Number(opt.price).toLocaleString()}`}</strong>
                                 ${opt.price !== null && opt.price !== undefined ? `<span style="font-size:0.75rem; color:#64748b; display:block;">${escapeHtml(opt.price_label || 'Provider price scope unspecified')}</span>` : ''}
                             </div>
                         </div>
                         <div style="font-size:0.85rem; color:#475569; line-height:1.4;">
-                            <div><strong>Departure:</strong> ${opt.departure} | <strong>Arrival:</strong> ${opt.arrival}</div>
-                            <div><strong>Duration:</strong> ${opt.duration} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : opt.stops + ' stop(s)'}${airplaneInfo}</div>
+                            <div><strong>Departure:</strong> ${escapeHtml(opt.departure || 'Not provided')} | <strong>Arrival:</strong> ${escapeHtml(opt.arrival || 'Not provided')}</div>
+                            <div><strong>Duration:</strong> ${escapeHtml(opt.duration || 'Not provided')} | <strong>Stops:</strong> ${opt.stops === 0 ? 'Non-stop' : escapeHtml(opt.stops ?? 'Not provided') + ' stop(s)'}${airplaneInfo}</div>
                             ${opt.return_leg ? `<div style="margin-top:4px;"><strong>Return:</strong> ${escapeHtml(opt.return_leg.departure_airport || '')} → ${escapeHtml(opt.return_leg.arrival_airport || '')} | ${escapeHtml(opt.return_leg.departure_time || '')} → ${escapeHtml(opt.return_leg.arrival_time || '')} | ${escapeHtml(opt.return_leg.duration || '')}</div>` : ''}
+                        </div>
                         </div>
                     </div>`;
                 });
