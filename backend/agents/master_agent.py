@@ -242,6 +242,19 @@ class MasterAgent:
             "hotel_results": None,
             "itinerary_results": None,
         }
+        unsupported_transport_preferences = [
+            preference.get("value")
+            for preference in applicable_preferences
+            if preference.get("category") == "transport"
+            and preference.get("value", "").casefold()
+            not in {"flight", "plane", "air", "air travel"}
+        ]
+        if unsupported_transport_preferences:
+            response_data["preference_limitations"] = [
+                "Saved transportation preference "
+                f"'{value}' is not supported by the current flight-only transport provider."
+                for value in unsupported_transport_preferences
+            ]
 
         previous_transport = (current_trip or {}).get("transport_results")
         previous_hotels = (current_trip or {}).get("hotel_results")

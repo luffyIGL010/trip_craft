@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId) {
+    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId, preferenceLimitations) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${plan.request_summary || ''}</em></p>
@@ -84,6 +84,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <strong>🎯 Preferences:</strong>
                 <ul>${plan.preferences.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
             </div>`;
+        }
+        if (preferenceLimitations && preferenceLimitations.length) {
+            html += `<div class="plan-section missing"><strong>Preference limitations:</strong><ul>${preferenceLimitations.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
         }
 
         if (plan.tasks && plan.tasks.length > 0) {
@@ -654,7 +657,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         data.data.combined_trip_cost,
                         data.data.itinerary_results,
                         data.data.replanning,
-                        data.data.trip_id
+                        data.data.trip_id,
+                        data.data.preference_limitations
                     );
                 } else if (data.type === 'replan_decision') {
                     const statusElement = messagesContainer.querySelector(
