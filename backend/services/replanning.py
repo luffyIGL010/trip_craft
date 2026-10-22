@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 from datetime import datetime
@@ -43,6 +44,15 @@ def _parse_time(value: Any) -> Optional[int]:
         return None
     hours, minutes = map(int, value.split(":"))
     return hours * 60 + minutes
+
+
+def _valid_inr_amount(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and value > 0
+    )
 
 
 class ReplanningService:
@@ -212,7 +222,8 @@ class ReplanningService:
             for estimate in estimates
             if estimate.get("status") == "available"
             and estimate.get("price_confidence") == "verified"
-            and isinstance(estimate.get("combined_total"), (int, float))
+            and (estimate.get("currency") or "").upper() == "INR"
+            and _valid_inr_amount(estimate.get("combined_total"))
         ]
         if not verified_totals:
             return
@@ -310,7 +321,8 @@ class ReplanningService:
         usable = [
             item for item in estimates
             if item.get("status") == "available"
-            and isinstance(item.get("combined_total"), (int, float))
+            and (item.get("currency") or "").upper() == "INR"
+            and _valid_inr_amount(item.get("combined_total"))
         ]
         usable.sort(key=lambda item: item["combined_total"])
         if not budget:
@@ -406,7 +418,8 @@ class ReplanningService:
             for item in estimates
             if item.get("status") == "available"
             and item.get("price_confidence") == "verified"
-            and isinstance(item.get("combined_total"), (int, float))
+            and (item.get("currency") or "").upper() == "INR"
+            and _valid_inr_amount(item.get("combined_total"))
         ]
         return min(totals) if totals else None
 
