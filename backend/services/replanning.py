@@ -419,6 +419,52 @@ class ReplanningService:
         return trip
 
     @staticmethod
+    def reserve_attempt(
+        db: Session,
+        trip: TripPlan,
+        user_id: int,
+        key: str,
+        original: dict,
+    ) -> TripPlanChange:
+        processing_response = {
+            "trip_id": trip.id,
+            "replanning": {
+                "status": "processing",
+                "message": "A re-planning attempt is in progress.",
+            },
+        }
+        trip.replan_attempts += 1
+        proposal = TripPlanChange(
+            trip_id=trip.id,
+            user_id=user_id,
+            request_key=key,
+            status="processing",
+            original_json=json.dumps(original),
+            proposed_json=json.dumps(original),
+            response_json=json.dumps(processing_response),
+            changes_json=json.dumps({"status": "processing"}),
+        )
+        db.add(proposal)
+        db.commit()
+        db.refresh(proposal)
+        return proposal
+
+    @staticmethod
+    def complete_attempt(
+        db: Session,
+        proposal: TripPlanChange,
+        candidate: dict,
+        analysis: dict,
+        response: dict,
+        status: str,
+    ) -> None:
+        proposal.proposed_json = json.dumps(candidate)
+        proposal.changes_json = json.dumps(analysis)
+        proposal.response_json = json.dumps(response)
+        proposal.status = status
+        db.commit()
+
+    @staticmethod
     def save_proposal(
         db: Session,
         trip: TripPlan,
