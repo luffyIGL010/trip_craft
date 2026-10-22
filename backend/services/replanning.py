@@ -406,8 +406,7 @@ class ReplanningService:
                             f"'{activity.get('title', 'An activity')}' ends after the "
                             "available return flight's departure time."
                         ),
-                        })
-                        break
+                    })
 
     @staticmethod
     def _detect_budget_conflict(state, saved_preferences, conflicts):
