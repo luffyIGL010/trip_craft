@@ -64,7 +64,7 @@ class ItineraryAgent:
         saved_preferences: Optional[list[dict]] = None,
     ) -> ItineraryResult:
         missing = []
-        if not plan.destination:
+        if not plan.destination or not plan.destination.strip():
             missing.append("destination")
         if not plan.dates or not plan.dates.start:
             missing.append("start_date")
@@ -97,8 +97,14 @@ class ItineraryAgent:
                     destination=plan.destination,
                     message="The trip end date must be a valid YYYY-MM-DD date.",
                 )
-        elif plan.duration_days and plan.duration_days > 0:
+        elif plan.duration_days is not None and plan.duration_days > 0:
             end_date = start_date + timedelta(days=plan.duration_days - 1)
+        elif plan.duration_days is not None:
+            return ItineraryResult(
+                status="error",
+                destination=plan.destination,
+                message="Trip duration must be a positive number of days.",
+            )
         else:
             return ItineraryResult(
                 status="needs_information",
@@ -117,6 +123,13 @@ class ItineraryAgent:
             )
 
         duration_days = (end_date - start_date).days + 1
+        if plan.duration_days is not None and plan.duration_days != duration_days:
+            return ItineraryResult(
+                status="error",
+                destination=plan.destination,
+                duration_days=duration_days,
+                message="The trip duration does not match the supplied start and end dates.",
+            )
         if duration_days > MAX_ITINERARY_DAYS:
             return ItineraryResult(
                 status="error",
