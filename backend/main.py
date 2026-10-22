@@ -55,6 +55,14 @@ app.include_router(ws_router)
 from payments.router import router as payments_router
 app.include_router(payments_router)
 
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "message": "TravelAgent backend is running",
+        "health": "/health",
+    }
+
 @app.get("/health")
 async def health_check():
     """
