@@ -284,19 +284,31 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("invalid schedule", result.message)
 
     async def test_rejects_missing_days_duplicate_activities_and_overlaps(self):
-        invalid_days = make_days()
-        invalid_days[1]["activities"][0]["title"] = "Explore the waterfront"
-        invalid_days[1]["activities"][1]["start_time"] = "10:30"
-        invalid_days[1]["activities"][1]["end_time"] = "11:30"
-        agent, _ = configured_itinerary_agent({
-            "summary": "Invalid schedule",
-            "days": invalid_days[:2],
+        missing_day_agent, _ = configured_itinerary_agent({
+            "summary": "Missing a day",
+            "days": make_days()[:2],
+        })
+        duplicate_days = make_days()
+        duplicate_days[1]["activities"][0]["title"] = "Explore the waterfront"
+        duplicate_agent, _ = configured_itinerary_agent({
+            "summary": "Duplicate activity",
+            "days": duplicate_days,
+        })
+        overlapping_days = make_days()
+        overlapping_days[0]["activities"][1]["start_time"] = "13:30"
+        overlapping_days[0]["activities"][1]["end_time"] = "15:30"
+        overlap_agent, _ = configured_itinerary_agent({
+            "summary": "Overlapping activities",
+            "days": overlapping_days,
         })
 
-        result = await agent.execute(make_plan())
+        missing_day = await missing_day_agent.execute(make_plan())
+        duplicate = await duplicate_agent.execute(make_plan())
+        overlap = await overlap_agent.execute(make_plan())
 
-        self.assertEqual(result.status, "error")
-        self.assertIn("invalid schedule", result.message)
+        for result in (missing_day, duplicate, overlap):
+            self.assertEqual(result.status, "error")
+            self.assertIn("invalid schedule", result.message)
 
     async def test_returns_useful_errors_for_missing_invalid_dates_and_duration(self):
         agent, client = configured_itinerary_agent({
