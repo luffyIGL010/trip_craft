@@ -35,8 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const choices = {
         destination: {
             multiple: true,
-            options: ['Uttarakhand', 'Himachal Pradesh', 'Goa', 'Rajasthan', 'Kerala', 'Northeast India', 'Europe', 'Southeast Asia', 'Japan'],
-            image: 'destination'
+            options: ['Uttarakhand', 'Himachal Pradesh', 'Goa', 'Rajasthan', 'Kerala', 'Northeast India', 'Europe', 'Southeast Asia', 'Japan']
         },
         accommodation: {
             options: ['budget', 'hostel', 'standard hotel', 'premium hotel', 'luxury', 'resort', 'homestay', 'guesthouse', 'vacation rental', 'camps or cottages', 'no preference'],

@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from auth.auth import create_access_token
 from agents.master_agent import MasterAgent
 from agents.schemas import Budget, Dates, MasterAgentResponse
+from agents.hotel_agent import HotelAgent
 from database.database import Base, get_db
 from database.models import TripPlan, User
 from schemas.itinerary import ItineraryResult
@@ -97,7 +98,13 @@ class ReplanningAnalysisTests(unittest.TestCase):
 
     def test_budget_conflict_and_cheaper_verified_alternative(self):
         original = _state(total=30000)
+        original["plan"]["budget"] = {
+            "amount": 20000,
+            "currency": "INR",
+            "basis": "total_trip",
+        }
         candidate = _state(total=18000)
+        candidate["plan"]["budget"] = original["plan"]["budget"]
         candidate["combined_trip_cost"]["estimates"].append(
             _estimate(18000, flight="Flight B", hotel="Hotel B")
         )
@@ -114,7 +121,13 @@ class ReplanningAnalysisTests(unittest.TestCase):
 
     def test_no_suitable_alternatives_returns_unresolved_conflict(self):
         original = _state(total=30000)
+        original["plan"]["budget"] = {
+            "amount": 20000,
+            "currency": "INR",
+            "basis": "total_trip",
+        }
         candidate = _state(total=32000)
+        candidate["plan"]["budget"] = original["plan"]["budget"]
         proposal = ReplanningService.prepare_proposal(
             original, candidate, "Replan this trip to reduce cost", self.budget
         )
@@ -178,9 +191,57 @@ class ReplanningAnalysisTests(unittest.TestCase):
 
     def test_unverified_fares_are_not_used_for_budget_comparison(self):
         state = _state(total=100000)
+        state["plan"]["budget"] = {
+            "amount": 20000,
+            "currency": "INR",
+            "basis": "total_trip",
+        }
         state["combined_trip_cost"]["estimates"][0]["price_confidence"] = "provisional"
         conflicts = ReplanningService.detect_conflicts(state, self.budget)
         self.assertNotIn("budget_exceeded", {item["code"] for item in conflicts})
+
+    def test_saved_usual_budget_is_not_treated_as_hard_current_trip_budget(self):
+        state = _state(total=100000)
+        analysis = ReplanningService.analyze(state, [{
+            "category": "budget",
+            "budget_basis": "total_trip",
+            "currency": "INR",
+            "max_amount": 20000,
+        }])
+
+        self.assertNotIn("budget_exceeded", {item["code"] for item in analysis["conflicts"]})
+        self.assertEqual(analysis["status"], "unable_to_validate")
+        self.assertIn(
+            "guideline_only",
+            {item["status"] for item in analysis["checks_completed"]},
+        )
+
+    def test_empty_and_failed_results_are_unable_to_validate_not_no_conflict(self):
+        state = _state()
+        state["transport_results"]["options"] = []
+        state["hotel_results"]["options"] = []
+
+        analysis = ReplanningService.analyze(state)
+
+        self.assertEqual(analysis["status"], "unable_to_validate")
+        self.assertTrue(analysis["unable_to_validate"])
+        self.assertNotEqual(analysis["status"], "no_conflict")
+
+    def test_conflict_analysis_reports_checks_that_completed(self):
+        state = _state()
+        state["plan"]["tasks"] = ["find_transport", "find_hotel", "create_itinerary"]
+        state["transport_results"].update({
+            "trip_type": "round_trip",
+            "return_date": "2027-05-03",
+            "options": [{
+                "option_id": "flight-1",
+                "outbound_leg": {"arrival_time": "2027-05-01T09:00:00+08:00"},
+                "return_leg": {"departure_time": "2027-05-03T18:00:00+08:00"},
+            }],
+        })
+        analysis = ReplanningService.analyze(state)
+        self.assertIn("activity_overlaps", {item["name"] for item in analysis["checks_completed"]})
+        self.assertIn("flight_activity_timing", {item["name"] for item in analysis["checks_completed"]})
 
     def test_attempt_limit_is_configurable_and_bounded(self):
         with patch.dict(os.environ, {"TRIP_REPLAN_MAX_ATTEMPTS": "2"}):
