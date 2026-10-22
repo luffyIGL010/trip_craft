@@ -545,6 +545,7 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         }
         agent._mock_response = Mock(return_value=plan)
         agent.weather_service.get_trip_weather = AsyncMock(return_value=weather)
+        agent.itinerary_agent.execute = AsyncMock()
 
         result = await agent.process_request(
             "Check the weather forecast for Goa during my trip"
