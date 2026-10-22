@@ -1,7 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from jose import JWTError
 
@@ -175,8 +175,13 @@ async def websocket_endpoint(
                             TripPlanChange.request_key == key,
                         ).first()
                         if previous_proposal:
+                            message_type = (
+                                "replanning"
+                                if previous_proposal.status == "processing"
+                                else "plan"
+                            )
                             await websocket.send_json({
-                                "type": "plan",
+                                "type": message_type,
                                 "data": json.loads(previous_proposal.response_json),
                             })
                             continue
@@ -195,14 +200,48 @@ async def websocket_endpoint(
                             continue
 
                         original_state = json.loads(trip.state_json)
-                        trip.replan_attempts += 1
-                        db.commit()
-                        result_data = await master_agent.process_request(
-                            user_message,
-                            status_callback=send_status,
-                            saved_preferences=saved_preferences,
-                            current_trip=original_state,
-                        )
+                        try:
+                            reservation = ReplanningService.reserve_attempt(
+                                db,
+                                trip,
+                                user.id,
+                                key,
+                                original_state,
+                            )
+                        except IntegrityError:
+                            db.rollback()
+                            existing = db.query(TripPlanChange).filter(
+                                TripPlanChange.trip_id == trip.id,
+                                TripPlanChange.user_id == user.id,
+                                TripPlanChange.request_key == key,
+                            ).first()
+                            if existing is None:
+                                raise
+                            await websocket.send_json({
+                                "type": "replanning",
+                                "data": json.loads(existing.response_json),
+                            })
+                            continue
+
+                        try:
+                            result_data = await master_agent.process_request(
+                                user_message,
+                                status_callback=send_status,
+                                saved_preferences=saved_preferences,
+                                current_trip=original_state,
+                            )
+                        except Exception:
+                            reservation.status = "failed"
+                            failed_response = {
+                                "trip_id": trip.id,
+                                "replanning": {
+                                    "status": "failed",
+                                    "message": "The re-planning attempt failed; the saved trip was not changed.",
+                                },
+                            }
+                            reservation.response_json = json.dumps(failed_response)
+                            db.commit()
+                            raise
                         analysis = ReplanningService.prepare_proposal(
                             original_state,
                             result_data,
@@ -216,20 +255,20 @@ async def websocket_endpoint(
                             if analysis["status"] == "awaiting_approval"
                             else analysis["status"]
                         )
-                        proposal = ReplanningService.save_proposal(
+                        result_data["replanning"]["proposal_id"] = reservation.id
+                        candidate_state = {
+                            key: value
+                            for key, value in result_data.items()
+                            if key not in {"trip_id", "replanning"}
+                        }
+                        ReplanningService.complete_attempt(
                             db,
-                            trip,
-                            user.id,
-                            key,
-                            original_state,
-                            result_data,
+                            reservation,
+                            candidate_state,
                             analysis,
                             result_data,
-                            status=proposal_status,
+                            proposal_status,
                         )
-                        result_data["replanning"]["proposal_id"] = proposal.id
-                        proposal.response_json = json.dumps(result_data)
-                        db.commit()
                     else:
                         # Keep the existing chat message and plan response formats.
                         result_data = await master_agent.process_request(
