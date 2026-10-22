@@ -549,7 +549,8 @@ class ReplanningService:
             ]
         travelers = max(1, int((candidate.get("plan") or {}).get("travelers") or 1))
         maximum = float(budget["max_amount"])
-        factor = travelers if budget["budget_basis"] == "per_person" else 1
+        basis = budget.get("basis") or budget.get("budget_basis")
+        factor = travelers if basis == "per_person" else 1
         return [
             {
                 "flight_option": item.get("flight_option"),

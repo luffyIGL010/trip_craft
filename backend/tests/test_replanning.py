@@ -171,11 +171,13 @@ class ReplanningAnalysisTests(unittest.TestCase):
         }
         state["transport_results"] = None
 
-        conflicts = ReplanningService.detect_conflicts(state)
+        analysis = ReplanningService.analyze(state)
+        conflicts = analysis["conflicts"]
+        unavailable = {item["code"] for item in analysis["unable_to_validate"]}
 
-        self.assertIn("flight_search_unavailable", {item["code"] for item in conflicts})
-        self.assertIn("hotel_search_unavailable", {item["code"] for item in conflicts})
-        self.assertTrue(any("Provider unavailable" in item["message"] for item in conflicts))
+        self.assertIn("flight_search_unavailable", unavailable)
+        self.assertIn("hotel_search_unavailable", unavailable)
+        self.assertTrue(any("Provider unavailable" in item["message"] for item in analysis["unable_to_validate"]))
 
         state["transport_results"] = {"status": "success", "is_mock": True}
         state["hotel_results"] = {
