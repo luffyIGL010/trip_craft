@@ -763,6 +763,50 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             for item in estimates
         }), 4)
 
+    async def test_combined_total_is_withheld_for_unverified_flight_price_scope(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=[
+                TransportOption(
+                    option_id="outbound-token",
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="2h",
+                    stops=0,
+                    price=10000,
+                    currency="INR",
+                    price_label="Outbound-only fare; return fare not included or verified",
+                    trip_type=None,
+                )
+            ],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=5,
+            options=[
+                HotelOption(
+                    option_id="hotel-1",
+                    name="Hotel",
+                    city="Dubai",
+                    total_price=25000,
+                    currency="INR",
+                )
+            ],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027"
+        )
+
+        self.assertEqual(result["combined_trip_cost"]["status"], "unavailable")
+        estimate = result["combined_trip_cost"]["estimates"][0]
+        self.assertEqual(estimate["status"], "unavailable")
+        self.assertNotIn("combined_total", estimate)
+
 
 class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
     async def test_round_trip_query_uses_provider_itinerary_price_and_hides_return_fare(self):
@@ -808,6 +852,7 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
                     "price": 200000,
                 }]
             },
+            "return_for_departure_token": "provider-itinerary-1",
         })
         agent.api_client.search_flights = search
         plan = MasterAgentResponse(
@@ -831,16 +876,139 @@ class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.options[0].price, 400000)
         self.assertIsNone(result.options[1].price)
         self.assertEqual(result.options[0].option_id, "provider-itinerary-1")
-        self.assertEqual(result.options[0].trip_type, "round_trip")
+        self.assertIsNone(result.options[0].trip_type)
         self.assertIsNone(result.options[1].trip_type)
-        self.assertIn("trip scope unspecified", result.options[1].price_label)
+        self.assertIn("itinerary and traveler price scopes unverified", result.options[1].price_label)
+        self.assertIn("outbound-only fare", result.options[0].price_label)
+        self.assertIn("return fare not included or verified", result.options[0].price_label)
+        self.assertEqual(result.options[0].price_scope, "unverified")
         self.assertEqual(
             result.price_label,
-            "Provider prices from a search requested with 2 travelers; trip scope is reported per option when available",
+            "Search requested with 2 travelers; each fare's itinerary and traveler price scope is reported per option when verified",
         )
         self.assertEqual(len(result.return_options), 1)
         self.assertIsNone(result.return_options[0].price)
         self.assertIsNone(result.options[0].return_leg)
+        self.assertEqual(
+            result.return_options[0].paired_outbound_option_id,
+            "provider-itinerary-1",
+        )
+        self.assertIsNone(result.return_options[0].trip_type)
+
+    async def test_round_trip_fare_requires_both_provider_return_legs(self):
+        agent = TravelAgent()
+        agent.api_client.search_flights = AsyncMock(return_value={
+            "is_mock": False,
+            "data": {
+                "best_flights": [{
+                    "type": "Round trip",
+                    "departure_token": "round-trip-token",
+                    "flights": [
+                        {
+                            "airline": "Air",
+                            "flight_number": "AB 123",
+                            "departure_airport": {"id": "DEL", "time": "2027-03-15T08:00"},
+                            "arrival_airport": {"id": "DXB", "time": "2027-03-15T10:00"},
+                            "duration": 120,
+                        },
+                        {
+                            "airline": "Air",
+                            "flight_number": "AB 124",
+                            "departure_airport": {"id": "DXB", "time": "2027-03-20T12:00"},
+                            "arrival_airport": {"id": "DEL", "time": "2027-03-20T14:00"},
+                            "duration": 120,
+                        },
+                    ],
+                    "total_duration": 240,
+                    "price": 18000,
+                }]
+            },
+            "return_data": None,
+        })
+        plan = MasterAgentResponse(
+            request_summary="Dubai trip",
+            origin="Delhi",
+            destination="Dubai",
+            dates=Dates(start="2027-03-15", end="2027-03-20"),
+            travelers=2,
+            budget=Budget(),
+        )
+
+        result = await agent.execute(plan)
+        option = result.options[0]
+
+        self.assertEqual(option.trip_type, "round_trip")
+        self.assertEqual(option.price, 18000)
+        self.assertEqual(option.price_scope, "unverified")
+        self.assertEqual(option.outbound_leg.flight_number, "AB 123")
+        self.assertEqual(option.return_leg.flight_number, "AB 124")
+        self.assertIn("round-trip itinerary fare", option.price_label)
+        self.assertIn("traveler price basis unverified", option.price_label)
+        self.assertIn("2 travelers", option.price_label)
+
+    async def test_multiple_traveler_price_is_not_scaled_without_provider_scope(self):
+        agent = TravelAgent()
+        agent.api_client.search_flights = AsyncMock(return_value={
+            "is_mock": False,
+            "data": {
+                "best_flights": [{
+                    "type": "One way",
+                    "flights": [{
+                        "airline": "Air",
+                        "flight_number": "AB 123",
+                        "departure_airport": {"id": "DEL", "time": "2027-03-15T08:00"},
+                        "arrival_airport": {"id": "DXB", "time": "2027-03-15T10:00"},
+                    }],
+                    "price": 9000,
+                }]
+            },
+        })
+        plan = MasterAgentResponse(
+            request_summary="Dubai flight",
+            origin="Delhi",
+            destination="Dubai",
+            dates=Dates(start="2027-03-15"),
+            travelers=3,
+            budget=Budget(),
+        )
+
+        result = await agent.execute(plan)
+
+        self.assertEqual(result.travelers, 3)
+        self.assertEqual(result.options[0].price, 9000)
+        self.assertEqual(result.options[0].price_scope, "unverified")
+        self.assertIn("3 travelers", result.options[0].price_label)
+        self.assertIn("one-way outbound fare", result.options[0].price_label)
+
+    async def test_missing_provider_fare_scope_is_not_reported_as_round_trip(self):
+        agent = TravelAgent()
+        agent.api_client.search_flights = AsyncMock(return_value={
+            "is_mock": False,
+            "data": {
+                "best_flights": [{
+                    "flights": [{
+                        "airline": "Air",
+                        "flight_number": "AB 123",
+                        "departure_airport": {"id": "DEL", "time": "2027-03-15T08:00"},
+                        "arrival_airport": {"id": "DXB", "time": "2027-03-15T10:00"},
+                    }],
+                    "price": 9000,
+                }]
+            },
+        })
+        plan = MasterAgentResponse(
+            request_summary="Dubai trip",
+            origin="Delhi",
+            destination="Dubai",
+            dates=Dates(start="2027-03-15", end="2027-03-20"),
+            travelers=1,
+            budget=Budget(),
+        )
+
+        result = await agent.execute(plan)
+
+        self.assertIsNone(result.options[0].trip_type)
+        self.assertIn("itinerary and traveler price scopes unverified", result.options[0].price_label)
 
 
 if __name__ == "__main__":
