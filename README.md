@@ -85,6 +85,9 @@ GROQ_API_KEY=<your-groq-api-key>
 - The backend refuses to start if `JWT_SECRET_KEY` is missing. WebSocket authentication sends the JWT in the handshake subprotocol, not the URL.
 - **GROQ_API_KEY**: Get from [console.groq.com](https://console.groq.com). If not provided, the Master Agent runs in mock mode.
 - **TRIP_REPLAN_MAX_ATTEMPTS** (optional): Maximum re-planning attempts per saved trip (default `3`, valid range `1`–`10`).
+- **FRONTEND_ORIGINS** (optional): Comma-separated frontend origins allowed by CORS. Set this in Render to your exact Vercel deployment origin (for example, `https://your-project.vercel.app`). The existing project origin is allowed by default.
+
+The frontend API client uses `https://trip-craft-7yjr.onrender.com` for HTTP and WebSocket requests. After changing frontend code, redeploy the `frontend/` directory on Vercel; if the browser still requests `127.0.0.1`, it is serving an older frontend deployment.
 
 ## Phase 9: Agentic Trip Re-planning
 

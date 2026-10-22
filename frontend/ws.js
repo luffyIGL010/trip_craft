@@ -706,7 +706,10 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatus('Connecting...');
         messagesContainer.innerHTML = '';
         
-        const wsUrl = 'ws://127.0.0.1:8000/ws';
+        const backendUrl = new URL(API_URL);
+        backendUrl.protocol = backendUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+        backendUrl.pathname = '/ws';
+        const wsUrl = backendUrl.toString();
         ws = new WebSocket(wsUrl, ['travelagent', `travelagent.auth.${token}`]);
         
         ws.onopen = () => {
