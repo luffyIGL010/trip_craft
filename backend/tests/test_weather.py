@@ -191,7 +191,7 @@ class OpenMeteoWeatherServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(invalid["status"], "unavailable")
         self.assertIn("No matching destination", invalid["message"])
         self.assertEqual(ambiguous["status"], "ambiguous")
-        self.assertIn("multiple countries", ambiguous["message"])
+        self.assertIn("multiple locations", ambiguous["message"])
         self.assertFalse(any(FORECAST_URL in str(call.url) for call in self.calls))
 
     async def test_invalid_coordinates_and_qualified_location_handling(self):

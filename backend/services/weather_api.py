@@ -259,13 +259,16 @@ class OpenMeteoWeatherService:
                 return None, "unavailable", "The destination qualifiers did not match a known location."
             exact = qualified
 
-        countries = {
-            str(item.get("country_code") or item.get("country") or "").casefold()
+        location_groups = {
+            (
+                str(item.get("country_code") or item.get("country") or "").casefold(),
+                _normalized(str(item.get("admin1") or "")),
+            )
             for item in exact
         }
-        if len(countries) > 1 and len(parts) == 1:
+        if len(location_groups) > 1 and len(parts) == 1:
             return None, "ambiguous", (
-                "This destination name matches locations in multiple countries. "
+                "This destination name matches multiple locations. "
                 "Add a region or country to identify the intended destination."
             )
 

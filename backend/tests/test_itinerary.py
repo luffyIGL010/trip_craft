@@ -582,6 +582,29 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
             status_callback.await_args_list,
         )
 
+    async def test_weather_failure_does_not_block_itinerary_generation(self):
+        agent = MasterAgent()
+        plan = make_plan(tasks=[])
+        agent._mock_response = Mock(return_value=plan)
+        agent.weather_service.get_trip_weather = AsyncMock(
+            side_effect=RuntimeError("weather provider unavailable")
+        )
+        itinerary = ItineraryResult(status="success", destination="Goa", duration_days=3)
+        agent.itinerary_agent.execute = AsyncMock(return_value=itinerary)
+
+        result = await agent.process_request(
+            "Create a day-by-day itinerary for Goa from May 1, 2027 to May 3, 2027"
+        )
+
+        self.assertEqual(result["itinerary_results"]["status"], "success")
+        self.assertEqual(result["weather_results"]["status"], "error")
+        self.assertIn("continued without weather data", result["weather_results"]["message"])
+        agent.itinerary_agent.execute.assert_awaited_once()
+        self.assertEqual(
+            agent.itinerary_agent.execute.await_args.kwargs["weather_results"]["status"],
+            "error",
+        )
+
     def test_authenticated_websocket_returns_complete_multi_day_itinerary(self):
         from websocket import router as websocket_router
 
