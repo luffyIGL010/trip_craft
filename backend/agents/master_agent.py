@@ -156,7 +156,11 @@ class MasterAgent:
 
         previous_plan = (current_trip or {}).get("plan") or {}
         if current_trip:
-            plan.destination = plan.destination or previous_plan.get("destination")
+            if not plan.destination or plan.destination.strip().casefold() in {
+                "unknown",
+                "unknown destination",
+            }:
+                plan.destination = previous_plan.get("destination")
             plan.origin = plan.origin or previous_plan.get("origin")
             previous_dates = previous_plan.get("dates") or {}
             plan.dates.start = plan.dates.start or previous_dates.get("start")

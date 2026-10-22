@@ -1,8 +1,7 @@
 import json
 import os
 import unittest
-from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,8 +10,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from auth.auth import create_access_token
+from agents.master_agent import MasterAgent
+from agents.schemas import Budget, Dates, MasterAgentResponse
 from database.database import Base, get_db
 from database.models import TripPlan, User
+from schemas.itinerary import ItineraryResult
 from services.replanning import (
     ReplanningService,
     max_replan_attempts,
@@ -133,6 +135,20 @@ class ReplanningAnalysisTests(unittest.TestCase):
             {"activity_overlap", "activity_before_arrival"},
         )
 
+    def test_return_departure_conflict_is_detected_only_for_paired_provider_data(self):
+        state = _state(activities=[
+            {"start_time": "16:00", "end_time": "18:00", "title": "Late activity"},
+        ])
+        state["transport_results"]["options"][0]["option_id"] = "outbound-1"
+        state["transport_results"]["return_options"] = [{
+            "paired_outbound_option_id": "outbound-1",
+            "outbound_leg": {"departure_time": "2027-05-01T17:00:00+08:00"},
+        }]
+
+        conflicts = ReplanningService.detect_conflicts(state)
+
+        self.assertIn("activity_after_departure", {item["code"] for item in conflicts})
+
     def test_missing_failed_search_and_hotel_date_mismatch_are_reported(self):
         state = _state()
         state["hotel_results"] = {
@@ -215,14 +231,29 @@ class ReplanningPersistenceTests(unittest.TestCase):
     def test_approval_persists_proposed_plan_and_rejection_keeps_original(self):
         with self.session_factory() as db:
             original = _state()
-            trip = ReplanningService.save_initial_plan(db, self.owner.id, original)
             candidate = _state(dates={"start": "2027-06-01", "end": "2027-06-03"})
             analysis = ReplanningService.prepare_proposal(original, candidate, "Change dates")
+            approved_trip = ReplanningService.save_initial_plan(db, self.owner.id, original)
             approved = ReplanningService.save_proposal(
-                db, trip, self.owner.id, "approved-key", original, candidate, analysis, {}
+                db,
+                approved_trip,
+                self.owner.id,
+                "approved-key",
+                original,
+                candidate,
+                analysis,
+                {},
             )
+            rejected_trip = ReplanningService.save_initial_plan(db, self.owner.id, original)
             rejected = ReplanningService.save_proposal(
-                db, trip, self.owner.id, "rejected-key", original, candidate, analysis, {}
+                db,
+                rejected_trip,
+                self.owner.id,
+                "rejected-key",
+                original,
+                candidate,
+                analysis,
+                {},
             )
             self.assertEqual(
                 ReplanningService.decide(db, self.owner.id, approved.id, "approved")["status"],
@@ -232,10 +263,15 @@ class ReplanningPersistenceTests(unittest.TestCase):
                 ReplanningService.decide(db, self.owner.id, rejected.id, "rejected")["status"],
                 "rejected",
             )
-            db.refresh(trip)
+            db.refresh(approved_trip)
             self.assertEqual(
-                json.loads(trip.state_json)["plan"]["dates"]["start"],
+                json.loads(approved_trip.state_json)["plan"]["dates"]["start"],
                 "2027-06-01",
+            )
+            db.refresh(rejected_trip)
+            self.assertEqual(
+                json.loads(rejected_trip.state_json)["plan"]["dates"]["start"],
+                "2027-05-01",
             )
             self.assertEqual(
                 ReplanningService.decide(db, self.owner.id, approved.id, "approved")["status"],
@@ -266,6 +302,73 @@ class ReplanningPersistenceTests(unittest.TestCase):
         first = request_key(7, 12, "Replan this trip")
         second = request_key(7, 12, "  REPLAN   THIS TRIP ")
         self.assertEqual(first, second)
+
+
+class ReplanningOrchestrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_identical_search_inputs_reuse_successful_and_failed_results(self):
+        for search_status in ("success", "error"):
+            with self.subTest(search_status=search_status):
+                agent = MasterAgent()
+                previous = _state()
+                previous["plan"]["tasks"] = [
+                    "find_transport",
+                    "find_hotel",
+                ]
+                previous["transport_results"] = {
+                    "status": search_status,
+                    "origin": "Delhi",
+                    "destination": "Singapore",
+                    "outbound_date": "2027-05-01",
+                    "return_date": "2027-05-03",
+                    "travelers": 2,
+                    "trip_type": "round_trip",
+                    "options": [],
+                    "return_options": [],
+                    "is_mock": False,
+                    "message": "Existing result",
+                }
+                previous["hotel_results"] = {
+                    "status": search_status,
+                    "destination": "Singapore",
+                    "check_in": "2027-05-01",
+                    "check_out": "2027-05-03",
+                    "adults": 2,
+                    "options": [],
+                    "message": "Existing hotel result",
+                }
+                agent._mock_response = Mock(return_value=MasterAgentResponse(
+                    request_summary="Replan request",
+                    destination="Singapore",
+                    origin="Delhi",
+                    dates=Dates(start="2027-05-01", end="2027-05-03"),
+                    travelers=2,
+                    budget=Budget(),
+                    tasks=[],
+                ))
+                agent.travel_agent.execute = AsyncMock()
+                agent.hotel_agent.execute = AsyncMock()
+                agent.itinerary_agent.execute = AsyncMock(
+                    return_value=ItineraryResult(status="error")
+                )
+
+                result = await agent.process_request(
+                    "Replan my Singapore trip",
+                    current_trip=previous,
+                )
+
+                agent.travel_agent.execute.assert_not_awaited()
+                agent.hotel_agent.execute.assert_not_awaited()
+                self.assertEqual(result["transport_results"]["status"], search_status)
+                self.assertEqual(result["hotel_results"]["status"], search_status)
+
+    def test_mock_parser_tracks_only_explicit_budget_basis(self):
+        agent = MasterAgent()
+        per_person = agent._mock_response(
+            "Plan my trip with INR 50,000 per person"
+        )
+        unclear = agent._mock_response("Plan my trip with INR 50,000 budget")
+        self.assertEqual(per_person.budget.basis, "per_person")
+        self.assertIsNone(unclear.budget.basis)
 
 
 class ReplanningWebSocketTests(unittest.TestCase):

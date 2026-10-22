@@ -602,6 +602,8 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
                                     break
 
             plan_response = responses[-1]["data"]
+            self.assertIsInstance(plan_response["trip_id"], int)
+            self.assertIn("replanning", plan_response)
             itinerary = plan_response["itinerary_results"]
             self.assertEqual(itinerary["status"], "success")
             self.assertEqual(itinerary["duration_days"], 3)

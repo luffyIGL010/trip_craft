@@ -176,9 +176,13 @@ async def websocket_endpoint(
                         ).first()
                         if previous_proposal:
                             message_type = (
-                                "replanning"
-                                if previous_proposal.status == "processing"
-                                else "plan"
+                                "plan"
+                                if previous_proposal.status in {
+                                    "pending",
+                                    "unresolved",
+                                    "no_change",
+                                }
+                                else "replanning"
                             )
                             await websocket.send_json({
                                 "type": message_type,
