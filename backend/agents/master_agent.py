@@ -277,7 +277,10 @@ class MasterAgent:
                     None,
                 )
             if accommodation_style and hotel_result.status == "success":
-                if accommodation_style == "luxury":
+                normalized_accommodation = accommodation_style.casefold().replace("_", " ")
+                if normalized_accommodation in {"no preference", "none"}:
+                    accommodation_style = None
+                elif normalized_accommodation in {"luxury", "premium hotel", "resort"}:
                     rated_options = [
                         option for option in hotel_result.options
                         if not option.is_fixture_price and option.star_rating is not None
@@ -290,7 +293,21 @@ class MasterAgent:
                                 -(option.guest_rating or 0),
                             )
                         )
-                else:
+                elif normalized_accommodation in {"budget", "hostel"}:
+                    priced_options = [
+                        option for option in hotel_result.options
+                        if not option.is_fixture_price
+                        and (option.total_price or option.nightly_price) is not None
+                    ]
+                    if priced_options:
+                        hotel_result.options.sort(
+                            key=lambda option: (
+                                option.is_fixture_price
+                                or (option.total_price or option.nightly_price) is None,
+                                option.total_price or option.nightly_price or math.inf,
+                            )
+                        )
+                elif accommodation_style is not None:
                     priced_options = [
                         option for option in hotel_result.options
                         if not option.is_fixture_price
@@ -748,8 +765,23 @@ class MasterAgent:
 
         # 4. Budget
         budget_amount = None
-        if "50000" in msg or "50,000" in msg:
-            budget_amount = 50000.0
+        budget_match = re.search(
+            r"(?:₹|INR\s*)\s*([\d,]+(?:\.\d+)?)"
+            r"|\b(?:budget|under|below|up to|maximum|max)\s*"
+            r"(?:of\s*)?(?:₹|INR\s*)?([\d,]+(?:\.\d+)?)",
+            user_message,
+            re.IGNORECASE,
+        )
+        if budget_match:
+            raw_budget = next(
+                (value for value in budget_match.groups() if value is not None),
+                None,
+            )
+            if raw_budget:
+                try:
+                    budget_amount = float(raw_budget.replace(",", ""))
+                except ValueError:
+                    budget_amount = None
         budget_basis = None
         if re.search(r"\b(per person|per traveler|each traveler)\b", msg):
             budget_basis = "per_person"

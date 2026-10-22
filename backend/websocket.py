@@ -297,23 +297,31 @@ async def websocket_endpoint(
                         )
                         trip = ReplanningService.save_initial_plan(db, user.id, result_data)
                         result_data["trip_id"] = trip.id
-                        conflicts = ReplanningService.detect_conflicts(
+                        analysis = ReplanningService.analyze(
                             result_data,
                             saved_preferences,
                         )
                         result_data["replanning"] = {
-                            "status": "conflicts_detected" if conflicts else "not_needed",
-                            "conflicts": conflicts,
+                            "status": {
+                                "conflict_detected": "conflicts_detected",
+                                "unable_to_validate": "unable_to_validate",
+                                "no_conflict": "not_needed",
+                            }[analysis["status"]],
+                            "conflicts": analysis["conflicts"],
+                            "checks_completed": analysis["checks_completed"],
+                            "unable_to_validate": analysis["unable_to_validate"],
                             "changes": [],
                             "alternatives": ReplanningService._budget_alternatives(
                                 result_data,
                                 saved_preferences,
                             ),
-                            "unresolved_conflicts": conflicts,
+                            "unresolved_conflicts": analysis["conflicts"],
                             "message": (
                                 "Review these detected planning issues; no changes were applied."
-                                if conflicts
-                                else "No supported trip conflict was detected."
+                                if analysis["status"] == "conflict_detected"
+                                else "Validation is incomplete; no conflict is asserted."
+                                if analysis["status"] == "unable_to_validate"
+                                else "No conflict found in the completed checks."
                             ),
                         }
                     

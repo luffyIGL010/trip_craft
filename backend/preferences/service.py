@@ -30,7 +30,7 @@ _INTERESTS = {
 }
 
 _CATEGORY_KEYWORDS = {
-    "accommodation": r"\b(?:budget|mid[- ]range|luxury)\s+(?:hotels?|accommodation|stays?)\b",
+    "accommodation": r"\b(?:budget|mid[- ]range|luxury|standard|premium|hostel|resort|homestay|guesthouse|vacation rental|camps? or cottages?)\s+(?:hotels?|accommodation|stays?)?\b",
     "pace": r"\b(?:relaxed|balanced|packed)\b",
     "interest": r"\b(?:history|historical|historic|nature|wildlife|food|culinary|shopping|adventure|culture|cultural)\b",
     "transport": r"\b(?:train|rail|flight|plane|bus|car)\b",
@@ -40,11 +40,14 @@ _CATEGORY_KEYWORDS = {
 
 def accommodation_preference_from_request(message: str) -> Optional[str]:
     match = re.search(
-        r"\b(budget|mid[- ]range|luxury)\s+(?:hotels?|accommodation|stays?)\b",
+        r"\b(budget|mid[- ]range|luxury|standard|premium|hostel|resort|homestay|guesthouse|vacation rental|camps? or cottages?)\s*(?:hotels?|accommodation|stays?)?\b",
         message,
         re.IGNORECASE,
     )
-    return match.group(1).replace(" ", "-").lower() if match else None
+    if not match:
+        return None
+    value = re.sub(r"\s+", " ", match.group(1).casefold()).strip()
+    return "mid-range" if value == "standard" else value
 
 
 def preference_label(preference: TravelPreference | dict) -> str:
@@ -162,11 +165,13 @@ def extract_explicit_preferences(message: str) -> list[dict]:
     for match in _PERSISTENT_STATEMENT.finditer(message):
         statement = (match.group(1) or match.group(2) or "").strip().lower()
         accommodation = re.search(
-            r"\b(budget|mid[- ]range|luxury)\s+(?:hotels?|accommodation|stays?)\b",
+            r"\b(budget|mid[- ]range|luxury|standard|premium|hostel|resort|homestay|guesthouse|vacation rental|camps? or cottages?)\s*(?:hotels?|accommodation|stays?)?\b",
             statement,
         )
         if accommodation:
-            value = accommodation.group(1).replace(" ", "-")
+            value = re.sub(r"\s+", " ", accommodation.group(1)).strip()
+            if value == "standard":
+                value = "mid-range"
             candidate = ("accommodation", value)
             if candidate not in seen:
                 extracted.append({"category": candidate[0], "value": candidate[1]})

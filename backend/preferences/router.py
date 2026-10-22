@@ -66,12 +66,21 @@ class PreferenceInput(BaseModel):
         elif not value:
             raise ValueError("Preference value must not be empty")
 
-        if category == "accommodation" and value.lower() not in {
+        if category == "accommodation" and value.casefold() not in {
             "budget",
+            "hostel",
+            "standard hotel",
+            "premium hotel",
             "mid-range",
             "luxury",
+            "resort",
+            "homestay",
+            "guesthouse",
+            "vacation rental",
+            "camps or cottages",
+            "no preference",
         }:
-            raise ValueError("Accommodation must be budget, mid-range, or luxury")
+            raise ValueError("Choose a supported accommodation style")
         if category == "pace" and value.lower() not in {
             "relaxed",
             "balanced",

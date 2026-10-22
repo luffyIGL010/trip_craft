@@ -73,7 +73,17 @@ class ReplanningService:
         state: dict,
         saved_preferences: Optional[list[dict]] = None,
     ) -> list[dict]:
+        return cls.analyze(state, saved_preferences)["conflicts"]
+
+    @classmethod
+    def analyze(
+        cls,
+        state: dict,
+        saved_preferences: Optional[list[dict]] = None,
+    ) -> dict:
         conflicts = []
+        checks = []
+        unavailable = []
         plan = state.get("plan") or {}
         dates = plan.get("dates") or {}
         transport = state.get("transport_results")
@@ -81,70 +91,243 @@ class ReplanningService:
         itinerary = state.get("itinerary_results")
         tasks = set(plan.get("tasks") or [])
 
-        if "find_transport" in tasks and (
-            not transport or transport.get("status") != "success"
-        ):
-            conflicts.append({
-                "code": "flight_search_unavailable",
-                "message": (
+        if "find_transport" in tasks:
+            if transport and transport.get("status") == "success":
+                checks.append({"name": "flight_search", "status": "completed"})
+                if not transport.get("options"):
+                    unavailable.append({
+                        "code": "flight_options_missing",
+                        "message": "Flight search returned no options to validate.",
+                    })
+                elif transport.get("is_mock"):
+                    unavailable.append({
+                        "code": "flight_data_unverified",
+                        "message": "Flight timing and price checks cannot use mock search data.",
+                    })
+            else:
+                message = (
                     transport.get("message")
                     if isinstance(transport, dict) and transport.get("message")
                     else "Flight search results are missing or unsuccessful."
-                ),
-            })
-        if {"find_hotel", "find_hotels"} & tasks and (
-            not hotels or hotels.get("status") != "success"
-        ):
-            conflicts.append({
-                "code": "hotel_search_unavailable",
-                "message": (
+                )
+                unavailable.append({
+                    "code": "flight_search_unavailable",
+                    "message": message,
+                })
+        else:
+            checks.append({"name": "flight_search", "status": "not_requested"})
+
+        hotel_tasks = {"find_hotel", "find_hotels"} & tasks
+        if hotel_tasks:
+            if hotels and hotels.get("status") == "success":
+                checks.append({"name": "hotel_search", "status": "completed"})
+                if not hotels.get("options"):
+                    unavailable.append({
+                        "code": "hotel_options_missing",
+                        "message": "Hotel search returned no options to validate.",
+                    })
+            else:
+                message = (
                     hotels.get("message")
                     if isinstance(hotels, dict) and hotels.get("message")
                     else "Hotel search results are missing or unsuccessful."
-                ),
-            })
+                )
+                unavailable.append({
+                    "code": "hotel_search_unavailable",
+                    "message": message,
+                })
+        else:
+            checks.append({"name": "hotel_search", "status": "not_requested"})
 
         if hotels and hotels.get("status") == "success":
-            if dates.get("start") and hotels.get("check_in") and dates["start"] != hotels["check_in"]:
-                conflicts.append({
-                    "code": "hotel_checkin_mismatch",
-                    "message": "Hotel check-in does not match the trip start date.",
+            if dates.get("start") and hotels.get("check_in"):
+                checks.append({"name": "hotel_check_in_date", "status": "completed"})
+                if dates["start"] != hotels["check_in"]:
+                    conflicts.append({
+                        "code": "hotel_checkin_mismatch",
+                        "message": "Hotel check-in does not match the trip start date.",
+                    })
+            else:
+                unavailable.append({
+                    "code": "hotel_checkin_unavailable",
+                    "message": "Trip start date or hotel check-in date is unavailable.",
                 })
-            if dates.get("end") and hotels.get("check_out") and dates["end"] != hotels["check_out"]:
-                conflicts.append({
-                    "code": "hotel_checkout_mismatch",
-                    "message": "Hotel check-out does not match the trip end date.",
+            if dates.get("end") and hotels.get("check_out"):
+                checks.append({"name": "hotel_check_out_date", "status": "completed"})
+                if dates["end"] != hotels["check_out"]:
+                    conflicts.append({
+                        "code": "hotel_checkout_mismatch",
+                        "message": "Hotel check-out does not match the trip end date.",
+                    })
+            else:
+                unavailable.append({
+                    "code": "hotel_checkout_unavailable",
+                    "message": "Trip end date or hotel check-out date is unavailable.",
                 })
 
         if itinerary and itinerary.get("status") == "success":
-            for day in itinerary.get("days") or []:
-                activities = day.get("activities") or []
-                valid_times = [
-                    (_parse_time(activity.get("start_time")),
-                     _parse_time(activity.get("end_time")), activity)
-                    for activity in activities
-                ]
-                valid_times = [
-                    item for item in valid_times
-                    if item[0] is not None and item[1] is not None
-                ]
-                valid_times.sort(key=lambda item: item[0])
-                for previous, current in zip(valid_times, valid_times[1:]):
-                    if current[0] < previous[1]:
-                        conflicts.append({
-                            "code": "activity_overlap",
-                            "date": day.get("date"),
-                            "message": (
-                                f"Activities '{previous[2].get('title', 'activity')}' and "
-                                f"'{current[2].get('title', 'activity')}' overlap."
-                            ),
+            days = itinerary.get("days")
+            if isinstance(days, list) and days:
+                malformed_schedule = False
+                overlap_found = False
+                for day in days:
+                    activities = day.get("activities") or []
+                    valid_times = []
+                    for activity in activities:
+                        start = _parse_time(activity.get("start_time"))
+                        end = _parse_time(activity.get("end_time"))
+                        if start is None or end is None or end <= start:
+                            malformed_schedule = True
+                            continue
+                        valid_times.append((start, end, activity))
+                    valid_times.sort(key=lambda item: item[0])
+                    for previous, current in zip(valid_times, valid_times[1:]):
+                        if current[0] < previous[1]:
+                            overlap_found = True
+                            conflicts.append({
+                                "code": "activity_overlap",
+                                "date": day.get("date"),
+                                "message": (
+                                    f"Activities '{previous[2].get('title', 'activity')}' and "
+                                    f"'{current[2].get('title', 'activity')}' overlap."
+                                ),
+                            })
+                            break
+                if malformed_schedule:
+                    unavailable.append({
+                        "code": "activity_schedule_incomplete",
+                        "message": "One or more activity time ranges are missing or invalid.",
+                    })
+                checks.append({
+                    "name": "activity_overlaps",
+                    "status": "conflict" if overlap_found else "completed",
+                })
+                timing_before = len(conflicts)
+                if transport and transport.get("status") == "success" and not transport.get("is_mock"):
+                    cls._detect_flight_timing_conflict(itinerary, transport, conflicts)
+                    if len(conflicts) > timing_before:
+                        checks.append({"name": "flight_activity_timing", "status": "conflict"})
+                    elif cls._has_verified_flight_timing(transport):
+                        checks.append({"name": "flight_activity_timing", "status": "completed"})
+                    else:
+                        checks.append({"name": "flight_activity_timing", "status": "unable_to_validate"})
+                        unavailable.append({
+                            "code": "flight_timing_unavailable",
+                            "message": "Provider results do not include usable arrival and return-departure times.",
                         })
-                        break
+                else:
+                    checks.append({"name": "flight_activity_timing", "status": "unable_to_validate"})
+                    if "find_transport" in tasks:
+                        unavailable.append({
+                            "code": "flight_timing_unavailable",
+                            "message": "Real flight times are unavailable for itinerary timing validation.",
+                        })
+            else:
+                unavailable.append({
+                    "code": "itinerary_days_missing",
+                    "message": "The itinerary has no day entries to check.",
+                })
+        elif "create_itinerary" in tasks:
+            unavailable.append({
+                "code": "itinerary_unavailable",
+                "message": (
+                    itinerary.get("message")
+                    if isinstance(itinerary, dict) and itinerary.get("message")
+                    else "The itinerary is missing or could not be generated."
+                ),
+            })
+        else:
+            checks.append({"name": "activity_overlaps", "status": "not_requested"})
 
-            cls._detect_flight_timing_conflict(itinerary, transport, conflicts)
+        budget = cls._explicit_budget_for_state(state)
+        if budget:
+            estimates = (state.get("combined_trip_cost") or {}).get("estimates") or []
+            verified_totals = [
+                estimate.get("combined_total")
+                for estimate in estimates
+                if estimate.get("status") == "available"
+                and estimate.get("price_confidence") == "verified"
+                and (estimate.get("currency") or "").upper() == budget["currency"]
+                and _valid_inr_amount(estimate.get("combined_total"))
+            ]
+            if verified_totals:
+                checks.append({"name": "current_trip_budget", "status": "completed"})
+                travelers = max(1, int((plan or {}).get("travelers") or 1))
+                maximum = float(budget["max_amount"])
+                comparable = [
+                    amount / travelers
+                    if budget["basis"] == "per_person"
+                    else amount
+                    for amount in verified_totals
+                ]
+                if min(comparable) > maximum:
+                    conflicts.append({
+                        "code": "budget_exceeded",
+                        "message": (
+                            f"The lowest verified flight-and-hotel estimate exceeds the "
+                            f"explicit current-trip budget of {budget['currency']} {maximum:,.0f}."
+                        ),
+                        "supporting_data": {
+                            "lowest_estimate": min(verified_totals),
+                            "currency": budget["currency"],
+                            "budget": maximum,
+                            "basis": budget["basis"],
+                        },
+                    })
+            else:
+                checks.append({"name": "current_trip_budget", "status": "unable_to_validate"})
+                unavailable.append({
+                    "code": "budget_estimate_unavailable",
+                    "message": "A verified INR flight-and-hotel total is unavailable for comparison with the current-trip budget.",
+                })
+        else:
+            if (plan.get("budget") or {}).get("amount") is not None:
+                checks.append({"name": "current_trip_budget", "status": "unable_to_validate"})
+                unavailable.append({
+                    "code": "budget_basis_unverified",
+                    "message": "The current-trip budget amount has no explicit total-trip or per-person basis.",
+                })
+            else:
+                checks.append({"name": "current_trip_budget", "status": "not_specified"})
 
-        cls._detect_budget_conflict(state, saved_preferences or [], conflicts)
-        return conflicts
+        saved_budget = cls._saved_budget_guideline(saved_preferences or [])
+        if saved_budget and not cls._explicit_budget_for_state(state):
+            checks.append({"name": "usual_budget_guideline", "status": "guideline_only"})
+
+        status = (
+            "conflict_detected"
+            if conflicts
+            else "unable_to_validate"
+            if unavailable
+            else "no_conflict"
+        )
+        return {
+            "status": status,
+            "conflicts": conflicts,
+            "checks_completed": checks,
+            "unable_to_validate": unavailable,
+        }
+
+    @staticmethod
+    def _has_verified_flight_timing(transport: dict) -> bool:
+        options = transport.get("options") or []
+        if not options or transport.get("is_mock"):
+            return False
+        outbound = _field(options[0], "outbound_leg")
+        arrival = _field(outbound, "arrival_time")
+        return_leg = _field(options[0], "return_leg")
+        if return_leg is None:
+            outbound_id = _field(options[0], "option_id")
+            paired = next(
+                (
+                    option for option in transport.get("return_options", []) or []
+                    if _field(option, "paired_outbound_option_id") == outbound_id
+                ),
+                None,
+            )
+            return_leg = _field(paired, "outbound_leg")
+        departure = _field(return_leg, "departure_time")
+        return bool(arrival and departure)
 
     @staticmethod
     def _detect_flight_timing_conflict(itinerary, transport, conflicts):
@@ -218,7 +401,7 @@ class ReplanningService:
 
     @staticmethod
     def _detect_budget_conflict(state, saved_preferences, conflicts):
-        preference = ReplanningService._budget_for_state(state, saved_preferences)
+        preference = ReplanningService._explicit_budget_for_state(state)
         if not preference:
             return
         estimates = (state.get("combined_trip_cost") or {}).get("estimates") or []
@@ -243,7 +426,7 @@ class ReplanningService:
             conflicts.append({
                 "code": "budget_exceeded",
                 "message": (
-                    f"The lowest verified flight-and-hotel estimate exceeds the saved "
+                    f"The lowest verified flight-and-hotel estimate exceeds the explicit "
                     f"{basis.replace('_', ' ')} budget of INR {maximum:,.0f}."
                 ),
             })
@@ -256,8 +439,10 @@ class ReplanningService:
         message: str,
         saved_preferences: Optional[list[dict]] = None,
     ) -> dict:
-        conflicts = cls.detect_conflicts(original, saved_preferences)
-        candidate_conflicts = cls.detect_conflicts(candidate, saved_preferences)
+        original_analysis = cls.analyze(original, saved_preferences)
+        candidate_analysis = cls.analyze(candidate, saved_preferences)
+        conflicts = original_analysis["conflicts"]
+        candidate_conflicts = candidate_analysis["conflicts"]
         changes = cls._describe_changes(original, candidate, message)
         alternatives = cls._budget_alternatives(candidate, saved_preferences or [])
         if (
@@ -292,6 +477,8 @@ class ReplanningService:
             return {
                 "status": "unresolved",
                 "conflicts": conflicts,
+                "checks_completed": original_analysis["checks_completed"],
+                "unable_to_validate": original_analysis["unable_to_validate"],
                 "changes": [],
                 "alternatives": alternatives,
                 "unresolved_conflicts": unresolved or conflicts,
@@ -301,14 +488,23 @@ class ReplanningService:
             return {
                 "status": "no_change",
                 "conflicts": conflicts,
+                "checks_completed": original_analysis["checks_completed"],
+                "unable_to_validate": original_analysis["unable_to_validate"],
                 "changes": [],
                 "alternatives": alternatives,
                 "unresolved_conflicts": unresolved,
-                "message": "No material change was found in the candidate plan.",
+                "message": (
+                    "No material change was found in the candidate plan."
+                    if original_analysis["status"] == "no_conflict"
+                    else "No material change was found; some conflicts could not be validated."
+                ),
+                "validation_status": original_analysis["status"],
             }
         return {
             "status": "awaiting_approval",
             "conflicts": conflicts,
+            "checks_completed": original_analysis["checks_completed"],
+            "unable_to_validate": original_analysis["unable_to_validate"],
             "changes": changes,
             "alternatives": alternatives,
             "unresolved_conflicts": unresolved,
@@ -361,6 +557,13 @@ class ReplanningService:
 
     @staticmethod
     def _budget_for_state(state: dict, saved_preferences: list[dict]) -> Optional[dict]:
+        explicit = ReplanningService._explicit_budget_for_state(state)
+        if explicit:
+            return explicit
+        return ReplanningService._saved_budget_guideline(saved_preferences)
+
+    @staticmethod
+    def _explicit_budget_for_state(state: dict) -> Optional[dict]:
         explicit = (state.get("plan") or {}).get("budget") or {}
         if (
             explicit.get("amount") is not None
@@ -368,10 +571,14 @@ class ReplanningService:
             and (explicit.get("currency") or "").upper() == "INR"
         ):
             return {
-                "budget_basis": explicit["basis"],
+                "basis": explicit["basis"],
                 "currency": explicit["currency"],
                 "max_amount": explicit["amount"],
             }
+        return None
+
+    @staticmethod
+    def _saved_budget_guideline(saved_preferences: list[dict]) -> Optional[dict]:
         return next(
             (
                 item for item in saved_preferences
