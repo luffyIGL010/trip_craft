@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1">
+      <stop stop-color="#dbeafe"/>
+      <stop offset="1" stop-color="#eff6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <circle cx="510" cy="80" r="38" fill="#bfdbfe"/>
+  <path d="M0 285 150 210l105 53 130-88 255 110v75H0z" fill="#cbd5e1"/>
+  <rect x="220" y="115" width="205" height="180" rx="10" fill="#fff" stroke="#93c5fd" stroke-width="6"/>
+  <path d="M200 123 322 55l123 68" fill="#93c5fd" stroke="#60a5fa" stroke-width="8" stroke-linejoin="round"/>
+  <rect x="249" y="148" width="42" height="45" rx="4" fill="#bfdbfe"/>
+  <rect x="354" y="148" width="42" height="45" rx="4" fill="#bfdbfe"/>
+  <rect x="300" y="218" width="45" height="77" rx="4" fill="#60a5fa"/>
+  <text x="320" y="333" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#475569">Hotel image unavailable</text>
+</svg>
