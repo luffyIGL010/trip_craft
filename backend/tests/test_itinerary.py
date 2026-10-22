@@ -202,6 +202,25 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
             make_plan(),
             transport_results=transport,
             hotel_results=hotels,
+            weather_results={
+                "status": "success",
+                "source": "Open-Meteo",
+                "timezone": "Asia/Kolkata",
+                "days": [{
+                    "date": "2027-05-01",
+                    "forecast_available": True,
+                    "condition": "Moderate rain",
+                    "temperature_2m_max": 31,
+                    "precipitation_probability_max": 70,
+                    "warnings": ["Rain is forecast."],
+                    "hourly": [{
+                        "time": "2027-05-01T12:00",
+                        "temperature_2m": 29,
+                        "condition": "Moderate rain",
+                        "precipitation_probability": 70,
+                    }],
+                }],
+            },
             saved_preferences=[
                 {
                     "category": "dietary",
@@ -244,6 +263,12 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
             request_context["budget"]["saved_budget_preferences"][0]["budget_basis"],
             "total_trip",
         )
+        self.assertEqual(request_context["weather"]["source"], "Open-Meteo")
+        self.assertEqual(
+            request_context["weather"]["days"][0]["condition"],
+            "Moderate rain",
+        )
+        self.assertIn("forecasts are time-sensitive", result.notice)
 
     async def test_rejects_activity_before_destination_arrival(self):
         invalid_days = make_days()
@@ -521,6 +546,13 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         )
         agent.travel_agent.execute = AsyncMock(return_value=transport)
         agent.hotel_agent.execute = AsyncMock(return_value=hotels)
+        weather = {
+            "status": "unavailable",
+            "destination": "Goa",
+            "message": "Requested dates are outside the available forecast.",
+            "days": [],
+        }
+        agent.weather_service.get_trip_weather = AsyncMock(return_value=weather)
         agent.itinerary_agent.execute = AsyncMock(return_value=itinerary)
         status_callback = AsyncMock()
 
@@ -535,6 +567,13 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
             transport_results=transport.model_dump(),
             hotel_results=hotels.model_dump(),
             saved_preferences=[{"category": "dietary", "value": "vegetarian"}],
+            weather_results=weather,
+        )
+        agent.weather_service.get_trip_weather.assert_awaited_once_with(
+            destination="Goa",
+            start_date="2027-05-01",
+            end_date="2027-05-03",
+            duration_days=3,
         )
         self.assertIn("create_itinerary", result["plan"]["tasks"])
         self.assertEqual(result["itinerary_results"]["status"], "success")
@@ -573,6 +612,16 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = override_db
         master = MasterAgent()
         master.client = None
+        master.weather_service.get_trip_weather = AsyncMock(return_value={
+            "status": "unavailable",
+            "destination": "Goa",
+            "location": None,
+            "timezone": None,
+            "current": None,
+            "days": [],
+            "message": "Dates are beyond the available forecast range.",
+            "source": "Open-Meteo",
+        })
         master._mock_response = Mock(return_value=make_plan(tasks=[]))
         generated = {
             "summary": "A relaxed three-day plan.",
@@ -604,6 +653,7 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
             plan_response = responses[-1]["data"]
             self.assertIsInstance(plan_response["trip_id"], int)
             self.assertIn("replanning", plan_response)
+            self.assertEqual(plan_response["weather_results"]["status"], "unavailable")
             itinerary = plan_response["itinerary_results"]
             self.assertEqual(itinerary["status"], "success")
             self.assertEqual(itinerary["duration_days"], 3)
