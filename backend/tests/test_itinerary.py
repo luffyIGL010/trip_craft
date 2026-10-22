@@ -1,8 +1,17 @@
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from auth.auth import create_access_token
+from database.database import Base, get_db
+from database.models import User
 from agents.itinerary_agent import ItineraryAgent
 from agents.master_agent import MasterAgent
 from agents.schemas import Budget, Dates, MasterAgentResponse
@@ -461,6 +470,75 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
             unittest.mock.call("itinerary_agent", "generating"),
             status_callback.await_args_list,
         )
+
+    def test_authenticated_websocket_returns_complete_multi_day_itinerary(self):
+        from websocket import router as websocket_router
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session_factory = sessionmaker(bind=engine)
+        with session_factory() as db:
+            user = User(
+                name="Itinerary Traveler",
+                email="itinerary@example.test",
+                password_hash="unused",
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        app = FastAPI()
+        app.include_router(websocket_router)
+
+        def override_db():
+            with session_factory() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = override_db
+        master = MasterAgent()
+        master.client = None
+        master._mock_response = Mock(return_value=make_plan(tasks=[]))
+        generated = {
+            "summary": "A relaxed three-day plan.",
+            "days": make_days(),
+        }
+        master.itinerary_agent = configured_itinerary_agent(generated)[0]
+        token = create_access_token({"sub": user.email})
+
+        try:
+            with patch("websocket.master_agent", master):
+                with TestClient(app) as client:
+                    with client.websocket_connect(f"/ws?token={token}") as websocket:
+                        websocket.send_json({
+                            "type": "message",
+                            "message": "Create a day-by-day itinerary for Goa",
+                        })
+                        responses = []
+                        while True:
+                            response = websocket.receive_json()
+                            responses.append(response)
+                            if response.get("type") == "plan":
+                                break
+
+            plan_response = responses[-1]["data"]
+            itinerary = plan_response["itinerary_results"]
+            self.assertEqual(itinerary["status"], "success")
+            self.assertEqual(itinerary["duration_days"], 3)
+            self.assertEqual(
+                [day["date"] for day in itinerary["days"]],
+                ["2027-05-01", "2027-05-02", "2027-05-03"],
+            )
+            self.assertTrue(any(
+                response.get("type") == "agent_status"
+                and response.get("agent") == "itinerary_agent"
+                for response in responses
+            ))
+        finally:
+            engine.dispose()
 
 
 if __name__ == "__main__":
