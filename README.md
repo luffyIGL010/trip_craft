@@ -80,6 +80,7 @@ GROQ_API_KEY=<your-groq-api-key>
 ```
 
 - **JWT_SECRET_KEY**: Generate with `openssl rand -hex 32`
+- The backend refuses to start if `JWT_SECRET_KEY` is missing. WebSocket authentication sends the JWT in the handshake subprotocol, not the URL.
 - **GROQ_API_KEY**: Get from [console.groq.com](https://console.groq.com). If not provided, the Master Agent runs in mock mode.
 
 ### 3. Start the Server

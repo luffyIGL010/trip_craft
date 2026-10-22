@@ -507,8 +507,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatus('Connecting...');
         messagesContainer.innerHTML = '';
         
-        const wsUrl = `ws://127.0.0.1:8000/ws?token=${encodeURIComponent(token)}`;
-        ws = new WebSocket(wsUrl);
+        const wsUrl = 'ws://127.0.0.1:8000/ws';
+        ws = new WebSocket(wsUrl, ['travelagent', `travelagent.auth.${token}`]);
         
         ws.onopen = () => {
             updateStatus('Connected');

@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth.auth import router as auth_router
+from auth.auth import require_jwt_secret_key, router as auth_router
 from websocket import router as ws_router
 from preferences.router import router as preferences_router
 from database.database import engine, Base, ensure_travel_preference_budget_basis
+
+# Fail startup rather than signing tokens with an unsafe fallback.
+require_jwt_secret_key()
 
 # Create database tables upon startup
 Base.metadata.create_all(bind=engine)

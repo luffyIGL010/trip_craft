@@ -1,13 +1,13 @@
 import json
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 
 from database.database import get_db
 from database.models import User
-from auth.auth import SECRET_KEY, ALGORITHM
+from auth.auth import decode_access_token
 from agents.master_agent import MasterAgent
 from preferences.service import (
     extract_explicit_preferences,
@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
+AUTH_SUBPROTOCOL_PREFIX = "travelagent.auth."
 
 # Initialize the Master Agent orchestrator once at startup
 master_agent = MasterAgent()
@@ -27,7 +28,7 @@ master_agent = MasterAgent()
 def get_user_from_token(token: str, db: Session):
     """Decode JWT and return the User object, or None if invalid."""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token)
         email: str = payload.get("sub")
         if not email:
             return None
@@ -37,14 +38,22 @@ def get_user_from_token(token: str, db: Session):
 
 @router.websocket("/ws")
 async def websocket_endpoint(
-    websocket: WebSocket, 
-    token: str = Query(None), 
+    websocket: WebSocket,
     db: Session = Depends(get_db)
 ):
-    # Accept connection first so we can send readable error messages
-    await websocket.accept()
+    offered_protocols = websocket.scope.get("subprotocols", [])
+    if "travelagent" not in offered_protocols:
+        await websocket.close(code=1008)
+        return
+    await websocket.accept(subprotocol="travelagent")
     
     # --- JWT Authentication ---
+    token_protocols = [
+        protocol[len(AUTH_SUBPROTOCOL_PREFIX):]
+        for protocol in offered_protocols
+        if protocol.startswith(AUTH_SUBPROTOCOL_PREFIX)
+    ]
+    token = token_protocols[0] if len(token_protocols) == 1 else None
     if not token:
         await websocket.send_json({"error": "Missing authentication token"})
         await websocket.close(code=1008)

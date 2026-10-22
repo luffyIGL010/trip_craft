@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -578,22 +579,27 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
             "days": make_days(),
         }
         master.itinerary_agent = configured_itinerary_agent(generated)[0]
-        token = create_access_token({"sub": user.email})
+        with patch.dict(os.environ, {"JWT_SECRET_KEY": "test-jwt-signing-key-for-itinerary"}):
+            token = create_access_token({"sub": user.email})
 
         try:
             with patch("websocket.master_agent", master):
-                with TestClient(app) as client:
-                    with client.websocket_connect(f"/ws?token={token}") as websocket:
-                        websocket.send_json({
-                            "type": "message",
-                            "message": "Create a day-by-day itinerary for Goa",
-                        })
-                        responses = []
-                        while True:
-                            response = websocket.receive_json()
-                            responses.append(response)
-                            if response.get("type") == "plan":
-                                break
+                with patch.dict(os.environ, {"JWT_SECRET_KEY": "test-jwt-signing-key-for-itinerary"}):
+                    with TestClient(app) as client:
+                        with client.websocket_connect(
+                            "/ws",
+                            subprotocols=["travelagent", f"travelagent.auth.{token}"],
+                        ) as websocket:
+                            websocket.send_json({
+                                "type": "message",
+                                "message": "Create a day-by-day itinerary for Goa",
+                            })
+                            responses = []
+                            while True:
+                                response = websocket.receive_json()
+                                responses.append(response)
+                                if response.get("type") == "plan":
+                                    break
 
             plan_response = responses[-1]["data"]
             itinerary = plan_response["itinerary_results"]

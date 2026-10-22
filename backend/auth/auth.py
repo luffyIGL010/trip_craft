@@ -14,12 +14,20 @@ from database.database import get_db
 
 load_dotenv()  # Automatically searches for .env in the current and parent directories
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback_secret_for_dev_only")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 security = HTTPBearer()
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+def require_jwt_secret_key() -> str:
+    secret_key = os.getenv("JWT_SECRET_KEY")
+    if not secret_key or not secret_key.strip():
+        raise RuntimeError("JWT_SECRET_KEY must be configured")
+    return secret_key
+
+def decode_access_token(token: str):
+    return jwt.decode(token, require_jwt_secret_key(), algorithms=[ALGORITHM])
 
 def verify_password(plain_password, hashed_password):
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -36,7 +44,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, require_jwt_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
@@ -47,7 +55,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token)
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
