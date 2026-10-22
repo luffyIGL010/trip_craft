@@ -247,6 +247,24 @@ class OpenMeteoWeatherServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("temperature_2m_max", result["days"][0])
 
+    async def test_date_with_no_returned_weather_values_is_not_marked_forecastable(self):
+        payload = forecast_payload()
+        for field, values in payload["daily"].items():
+            if field != "time":
+                payload["daily"][field] = [None] * len(values)
+        for field, values in payload["hourly"].items():
+            if field != "time":
+                payload["hourly"][field] = [None] * len(values)
+        service = self.make_service(forecast=payload)
+
+        result = await service.get_trip_weather(
+            "Mumbai", date.today().isoformat(), date.today().isoformat()
+        )
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertFalse(result["days"][0]["forecast_available"])
+        self.assertNotIn("temperature_2m_max", result["days"][0])
+
     async def test_partial_forecast_marks_unavailable_dates(self):
         service = self.make_service()
         start = date.today() + timedelta(days=15)

@@ -266,7 +266,7 @@ class OpenMeteoWeatherService:
             )
             for item in exact
         }
-        if len(location_groups) > 1 and len(parts) == 1:
+        if len(location_groups) > 1:
             return None, "ambiguous", (
                 "This destination name matches multiple locations. "
                 "Add a region or country to identify the intended destination."
@@ -332,7 +332,8 @@ class OpenMeteoWeatherService:
                 value = values[index] if isinstance(values, list) and index < len(values) else None
                 sample[field] = _finite_number(value)
             sample["condition"] = _weather_description(sample["weather_code"])
-            hourly_by_day.setdefault(day, []).append(sample)
+            if any(value is not None for key, value in sample.items() if key != "time"):
+                hourly_by_day.setdefault(day, []).append(sample)
 
         daily_fields = (
             "weather_code",
@@ -347,13 +348,11 @@ class OpenMeteoWeatherService:
         forecast_days = []
         for trip_day in trip_dates:
             index = daily_indexes.get(trip_day)
-            has_forecast = index is not None
             entry = {
                 "date": trip_day,
-                "forecast_available": has_forecast,
                 "hourly": hourly_by_day.get(trip_day, []),
             }
-            if has_forecast:
+            if index is not None:
                 for field in daily_fields:
                     values = daily.get(field)
                     value = values[index] if isinstance(values, list) and index < len(values) else None
@@ -362,6 +361,19 @@ class OpenMeteoWeatherService:
                     else:
                         entry[field] = _finite_number(value)
                 entry["condition"] = _weather_description(entry.get("weather_code"))
+            core_daily_fields = (
+                "weather_code",
+                "temperature_2m_max",
+                "temperature_2m_min",
+                "precipitation_probability_max",
+                "precipitation_sum",
+            )
+            has_forecast = (
+                any(entry.get(field) is not None for field in core_daily_fields)
+                or bool(entry["hourly"])
+            )
+            entry["forecast_available"] = has_forecast
+            if has_forecast:
                 entry["warnings"] = OpenMeteoWeatherService._planning_warnings(entry)
             else:
                 entry["warnings"] = []
