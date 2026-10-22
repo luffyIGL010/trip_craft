@@ -763,7 +763,7 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             for item in estimates
         }), 4)
 
-    async def test_combined_total_is_withheld_for_unverified_flight_price_scope(self):
+    async def test_unverified_flight_scope_shows_provisional_combined_estimate(self):
         agent = MasterAgent()
         agent.client = None
         agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
@@ -802,10 +802,162 @@ class MasterAgentPreferenceTests(unittest.IsolatedAsyncioTestCase):
             "Plan a trip to Dubai from Delhi from March 15, 2027 to March 20, 2027"
         )
 
-        self.assertEqual(result["combined_trip_cost"]["status"], "unavailable")
+        self.assertEqual(result["combined_trip_cost"]["status"], "available")
         estimate = result["combined_trip_cost"]["estimates"][0]
-        self.assertEqual(estimate["status"], "unavailable")
-        self.assertNotIn("combined_total", estimate)
+        self.assertEqual(estimate["status"], "available")
+        self.assertEqual(estimate["combined_total"], 35000)
+        self.assertEqual(estimate["price_confidence"], "provisional")
+        self.assertIn(
+            "traveler pricing basis is unverified",
+            estimate["price_warning"].lower(),
+        )
+        self.assertIn("return fare", estimate["price_warning"].lower())
+        self.assertNotIn("saved_budget_comparison", estimate)
+
+    async def test_missing_or_invalid_fare_does_not_show_misleading_total(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=[
+                TransportOption(
+                    option_id="missing",
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="2h",
+                    stops=0,
+                    price=None,
+                ),
+                TransportOption(
+                    option_id="invalid",
+                    provider="Rail",
+                    departure="out",
+                    arrival="in",
+                    duration="2h",
+                    stops=0,
+                    price=float("nan"),
+                ),
+            ],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=2,
+            options=[
+                HotelOption(
+                    option_id="hotel-1",
+                    name="Stay",
+                    total_price=10000,
+                    currency="INR",
+                )
+            ],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Goa from Delhi from May 1, 2027 to May 3, 2027"
+        )
+
+        estimates = result["combined_trip_cost"]["estimates"]
+        self.assertEqual(result["combined_trip_cost"]["status"], "unavailable")
+        self.assertEqual(len(estimates), 2)
+        for estimate in estimates:
+            self.assertEqual(estimate["status"], "unavailable")
+            self.assertIn("flight fare is missing or invalid", estimate["message"])
+            self.assertNotIn("combined_total", estimate)
+
+    async def test_verified_round_trip_price_has_verified_label_and_correct_total(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=[
+                TransportOption(
+                    option_id="verified-round-trip",
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="4h",
+                    stops=0,
+                    price=22000,
+                    currency="INR",
+                    price_scope="party_total",
+                    price_label="Provider-reported round-trip fare; party total for 2 travelers",
+                    trip_type="round_trip",
+                )
+            ],
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=2,
+            options=[
+                HotelOption(
+                    option_id="verified-hotel",
+                    name="Stay",
+                    total_price=14000,
+                    currency="INR",
+                )
+            ],
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Goa from Delhi from May 1, 2027 to May 3, 2027"
+        )
+
+        estimate = result["combined_trip_cost"]["estimates"][0]
+        self.assertEqual(estimate["combined_total"], 36000)
+        self.assertEqual(estimate["price_confidence"], "verified")
+        self.assertIn("round-trip fare", estimate["flight_scope"])
+        self.assertIsNone(estimate["price_warning"])
+
+    async def test_multiple_flight_hotel_pairs_sum_their_own_components(self):
+        agent = MasterAgent()
+        agent.client = None
+        flights = [
+            TransportOption(
+                option_id=f"flight-{index}",
+                provider=f"Air {index}",
+                departure="out",
+                arrival="in",
+                duration="4h",
+                stops=0,
+                price=flight_price,
+                currency="INR",
+                trip_type="round_trip",
+                price_scope="party_total",
+            )
+            for index, flight_price in ((1, 10000), (2, 15000))
+        ]
+        hotels = [
+            HotelOption(
+                option_id=f"hotel-{index}",
+                name=f"Hotel {index}",
+                total_price=hotel_price,
+                currency="INR",
+            )
+            for index, hotel_price in ((1, 5000), (2, 8000))
+        ]
+        agent.travel_agent.execute = AsyncMock(return_value=TransportResult(
+            status="success",
+            trip_type="round_trip",
+            options=flights,
+        ))
+        agent.hotel_agent.execute = AsyncMock(return_value=HotelResult(
+            status="success",
+            nights=2,
+            options=hotels,
+        ))
+
+        result = await agent.process_request(
+            "Plan a trip to Goa from Delhi from May 1, 2027 to May 3, 2027"
+        )
+
+        estimates = result["combined_trip_cost"]["estimates"]
+        self.assertEqual(
+            {estimate["combined_total"] for estimate in estimates},
+            {15000, 18000, 20000, 23000},
+        )
 
 
 class FlightFareMappingTests(unittest.IsolatedAsyncioTestCase):

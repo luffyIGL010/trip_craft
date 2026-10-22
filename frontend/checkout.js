@@ -143,6 +143,11 @@
               This payment does <strong>not</strong> reserve or guarantee any flight or hotel booking. Prices shown are
               search estimates and are not locked in at the time of payment. Travel inventory is NOT being held.
             </div>
+            ${combo.price_confidence !== 'verified' ? `
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:12px;margin-bottom:16px;font-size:0.8rem;color:#9a3412;line-height:1.5;">
+              <strong>Provisional price warning.</strong> Flight itinerary or traveler pricing scope is unverified. The displayed amount is a provisional estimate, and the flight fare has not been scaled by traveler count or supplemented with a return fare.
+              ${combo.price_warning ? `<div style="margin-top:5px;">${escapeHtml(combo.price_warning)}</div>` : ''}
+            </div>` : ''}
 
             <div style="margin-bottom:16px;">
               <div style="font-weight:600;color:#1e293b;margin-bottom:10px;">📋 Trip Summary</div>

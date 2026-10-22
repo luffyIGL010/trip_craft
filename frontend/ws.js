@@ -371,9 +371,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="badge" style="background:#7c3aed; color:white; font-size:0.75rem;">Flights + Accommodation</span>
                 </div>`;
 
-            if (combinedTripCost.status === "available" && combinedTripCost.estimates && combinedTripCost.estimates.length > 0) {
+            if (combinedTripCost.estimates && combinedTripCost.estimates.length > 0) {
                 html += `<div style="font-size:0.85rem; color:#475569; margin: 8px 0 12px 0;">
-                    Showing combined cost estimates for top flight & hotel combinations:
+                    Combined estimates use only numeric INR flight fares and hotel stay totals. Unverified fare scope is labeled provisional:
                 </div>
                 <div style="display:flex; flex-direction:column; gap:10px;">`;
 
@@ -418,16 +418,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             hotel_price:   est.hotel_total,
                             nights:        combinedTripCost.hotel_nights || 0,
                             travelers:     combinedTripCost.travelers || 1,
-                            destination:   plan ? (plan.destination || '') : ''
+                            destination:   plan ? (plan.destination || '') : '',
+                            price_confidence: est.price_confidence || 'provisional',
+                            price_warning: est.price_warning || ''
                         });
+                        const checkoutMarkup = `<div class="pp-btn-mount" data-combo-idx="${comboIdx}" style="margin-top:4px;"></div>`;
                         html += `<div style="border:1px solid #ddd6fe; border-radius:6px; padding:12px; background:#f5f3ff;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <strong style="color:#5b21b6; font-size:0.95rem;">Combination ${idx + 1}</strong>
-                                <span style="font-size:1.15rem; font-weight:700; color:#6d28d9;">${escapeHtml(est.formatted_total)}</span>
+                                <div style="text-align:right;">
+                                    <span style="font-size:1.15rem; font-weight:700; color:#6d28d9;">${escapeHtml(est.formatted_total)}</span>
+                                    <span style="display:block; font-size:0.72rem; color:${est.price_confidence === 'verified' ? '#166534' : '#92400e'}; font-weight:600;">
+                                        ${est.price_confidence === 'verified' ? 'Verified fare scope' : 'Provisional estimate'}
+                                    </span>
+                                </div>
                             </div>
                             <div style="font-size:0.85rem; color:#4c1d95; line-height:1.5;">
                                 <div>✈️ <strong>Flight:</strong> ${escapeHtml(est.flight_option)} • ₹${est.flight_price.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.flight_scope)})</span></div>
                                 <div>🏨 <strong>Hotel:</strong> ${escapeHtml(est.hotel_option)} • ₹${est.hotel_total.toLocaleString()} <span style="font-size:0.75rem; color:#6d28d9;">(${escapeHtml(est.hotel_scope)})</span></div>
+                                ${est.price_warning ? `<div style="margin-top:5px; color:#92400e;"><strong>Pricing note:</strong> ${escapeHtml(est.price_warning)}</div>` : ''}
                                 ${budgetStatusHtml}
                             </div>
                             <div style="margin-top:8px; font-size:0.75rem; color:#6b7280; border-top:1px dashed #c4b5fd; padding-top:6px; line-height:1.4;">
@@ -435,12 +444,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div><strong>Excludes:</strong> ${escapeHtml(est.exclusions)}</div>
                                 <div style="margin-top:4px; color:#7c3aed; font-style:italic;">⚠️ ${escapeHtml(est.disclaimer || 'Search estimate only; not a guaranteed booking price.')}</div>
                             </div>
-                            <div class="pp-btn-mount" data-combo-idx="${comboIdx}" style="margin-top:4px;"></div>
+                            ${checkoutMarkup}
                         </div>`;
                     } else {
                         html += `<div style="border:1px solid #fed7aa; border-radius:6px; padding:10px; background:#fff7ed; font-size:0.85rem; color:#9a3412;">
                             <strong>${escapeHtml(est.flight_option || 'Flight')} + ${escapeHtml(est.hotel_option || 'Hotel')}:</strong>
-                            <span>Combined cost unavailable (reliable price unavailable for one or both options)</span>
+                            <span>${escapeHtml(est.message || 'This combination does not have usable pricing information.')}</span>
                         </div>`;
                     }
                 });
@@ -448,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += `</div>`;
             } else {
                 html += `<div style="margin-top:10px; padding:10px 14px; background:#fff7ed; border-left:4px solid #f97316; border-radius:4px; font-size:0.9rem; color:#9a3412;">
-                    ⚠️ <strong>Combined cost unavailable:</strong> Reliable price information could not be determined for both flight and hotel components.
+                    ⚠️ <strong>Combined cost unavailable:</strong> No flight and hotel combination has usable numeric INR prices.
                 </div>`;
             }
 
@@ -473,7 +482,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         hotel_price:   est.hotel_total,
                         nights:        combinedTripCost.hotel_nights || 0,
                         travelers:     combinedTripCost.travelers || 1,
-                        destination:   plan ? (plan.destination || '') : ''
+                        destination:   plan ? (plan.destination || '') : '',
+                        price_confidence: est.price_confidence || 'provisional',
+                        price_warning: est.price_warning || ''
                     });
                 }
             });

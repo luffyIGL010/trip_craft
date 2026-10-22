@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import math
 import re
 from datetime import datetime
 from .schemas import MasterAgentResponse, Dates, Budget
@@ -24,6 +25,16 @@ def _normalized_identity(value):
     if value is None:
         return ""
     return re.sub(r"\s+", " ", str(value)).strip().casefold()
+
+
+def _positive_amount(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return None
+    return amount if math.isfinite(amount) and amount > 0 else None
 
 
 def _flight_identity(option, fallback_index):
@@ -331,7 +342,7 @@ class MasterAgent:
             # Generate useful comparisons for the best flight options and hotel options
             seen_combinations = set()
             for f_idx, fl in enumerate(unique_flights[:3]):
-                f_price = fl.get("price")
+                reported_flight_price = _positive_amount(fl.get("price"))
                 f_provider = fl.get("provider") or "Flight"
                 f_type = fl.get("trip_type") or "flight"
 
@@ -344,8 +355,8 @@ class MasterAgent:
                         continue
                     seen_combinations.add(combination_id)
 
-                    h_total = ht.get("total_price")
-                    h_nightly = ht.get("nightly_price")
+                    h_total = _positive_amount(ht.get("total_price"))
+                    h_nightly = _positive_amount(ht.get("nightly_price"))
                     h_name = ht.get("name") or "Hotel"
                     same_currency = (
                         (fl.get("currency") or "INR").upper()
@@ -353,88 +364,145 @@ class MasterAgent:
                         == "INR"
                     )
                     priced_scope_matches_trip = (
-                        f_type == tr.get("trip_type")
-                    )
-                    priced_scope_is_verified = (
                         f_type in {"round_trip", "one_way"}
-                        and fl.get("price_scope") == "party_total"
+                        and f_type == tr.get("trip_type")
                     )
+                    issues = []
+                    if not same_currency:
+                        issues.append("Flight and hotel prices must both be available in INR.")
+                    if reported_flight_price is None:
+                        issues.append("Provider-reported flight fare is missing or invalid.")
+                    if h_total is None:
+                        issues.append("Hotel total for the stay is missing or invalid.")
 
-                    if (
-                        same_currency
-                        and priced_scope_matches_trip
-                        and priced_scope_is_verified
-                        and f_price is not None
-                        and f_price > 0
-                        and h_total is not None
-                        and h_total > 0
-                    ):
-                        comb_total = float(f_price + h_total)
-                        estimate = {
-                            "flight_option": f"Option {f_idx + 1} ({f_provider})",
-                            "flight_option_id": repr(combination_id[0]),
-                            "flight_price": float(f_price),
-                            "flight_scope": fl.get("price_label")
-                            or "Provider price; trip scope unspecified",
-                            "hotel_option": f"Option {h_idx + 1} ({h_name})",
-                            "hotel_option_id": repr(combination_id[1]),
-                            "hotel_total": float(h_total),
-                            "hotel_nightly": float(h_nightly) if h_nightly else None,
-                            "hotel_scope": f"Total for {nights} night{'s' if nights != 1 else ''}",
-                            "combined_total": comb_total,
-                            "currency": "INR",
-                            "formatted_total": f"₹{comb_total:,.0f}",
-                            "inclusions": (
-                                f"{fl.get('price_label') or 'Provider flight itinerary price'} + "
-                                f"accommodation total for {nights} night"
-                                f"{'s' if nights != 1 else ''}"
-                            ),
-                            "exclusions": "Excludes local transfers, meals, attraction entry fees, visa, and personal expenses.",
-                            "disclaimer": "Search estimate only. Fares and room rates are subject to real-time availability and provider confirmation; prices are not guaranteed until booked.",
-                            "status": "available"
-                        }
-                        if comparison_budget and "status" not in comparison_budget:
-                            comparison_amount = (
-                                comb_total / travelers
-                                if comparison_budget["basis"] == "per_person"
-                                else comb_total
-                            )
-                            minimum = comparison_budget["min_amount"]
-                            maximum = comparison_budget["max_amount"]
-                            if maximum is not None and comparison_amount > maximum:
-                                budget_status = "above"
-                            elif minimum is not None and comparison_amount < minimum:
-                                budget_status = "below"
-                            else:
-                                budget_status = "within"
-                            estimate["saved_budget_comparison"] = {
-                                **comparison_budget,
-                                "status": budget_status,
-                                "travelers": travelers,
-                                "comparison_amount": comparison_amount,
-                                "comparison_label": (
-                                    f"INR {comparison_amount:,.0f} per traveler "
-                                    f"({travelers} travelers)"
-                                    if comparison_budget["basis"] == "per_person"
-                                    else f"INR {comparison_amount:,.0f} for the full trip"
-                                ),
-                            }
-                        elif comparison_budget:
-                            estimate["saved_budget_comparison"] = comparison_budget
-                        combined_estimates.append(estimate)
-                    else:
+                    if issues:
                         combined_estimates.append({
                             "flight_option": f"Option {f_idx + 1} ({f_provider})",
                             "flight_option_id": repr(combination_id[0]),
                             "hotel_option": f"Option {h_idx + 1} ({h_name})",
                             "hotel_option_id": repr(combination_id[1]),
                             "status": "unavailable",
-                            "message": (
-                                "Combined cost unavailable (currency mismatch, "
-                                "unverified provider trip or traveler price scope, or reliable price "
-                                "unavailable for one or both options)"
-                            )
+                            "message": " ".join(issues),
                         })
+                        continue
+
+                    price_scope = fl.get("price_scope") or "unverified"
+                    flight_price = reported_flight_price
+                    if price_scope == "per_traveler":
+                        flight_price *= travelers
+                    if not math.isfinite(flight_price):
+                        combined_estimates.append({
+                            "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                            "flight_option_id": repr(combination_id[0]),
+                            "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                            "hotel_option_id": repr(combination_id[1]),
+                            "status": "unavailable",
+                            "message": "Provider-reported flight fare is invalid for the requested traveler count.",
+                        })
+                        continue
+                    is_verified = (
+                        priced_scope_matches_trip
+                        and price_scope in {"party_total", "per_traveler"}
+                    )
+                    scope_warnings = []
+                    if not priced_scope_matches_trip:
+                        if f_type == "one_way" and tr.get("trip_type") == "round_trip":
+                            scope_warnings.append(
+                                "Provider fare is one-way; no return fare is included or added."
+                            )
+                        else:
+                            scope_warnings.append(
+                                "Flight itinerary scope is unverified for the requested trip."
+                            )
+                            if tr.get("trip_type") == "round_trip":
+                                scope_warnings.append(
+                                    "Return fare is not confirmed or added."
+                                )
+                    if price_scope == "unverified":
+                        scope_warnings.append(
+                            "Traveler pricing basis is unverified; the displayed fare was not multiplied or divided."
+                        )
+                    if price_scope == "per_traveler":
+                        scope_warnings.append(
+                            f"Flight fare is per traveler and was multiplied by {travelers} travelers using the provider-declared pricing scope."
+                        )
+                    if price_scope not in {"party_total", "per_traveler"}:
+                        scope_warnings.append(
+                            "Combined amount is provisional and must not be treated as a confirmed full-trip total."
+                        )
+
+                    comb_total = float(flight_price + h_total)
+                    flight_scope = fl.get("price_label")
+                    if not flight_scope:
+                        flight_scope = (
+                            f"Provider-reported {f_type.replace('_', ' ')} itinerary fare; "
+                            "party-total pricing scope established"
+                            if is_verified
+                            else "Provider-reported flight fare; itinerary and traveler pricing scope unverified"
+                        )
+                    if price_scope == "per_traveler":
+                        flight_scope = (
+                            f"{flight_scope}; multiplied by {travelers} travelers "
+                            "using the provider-declared per-traveler pricing scope"
+                        )
+                    estimate_warning = " ".join(scope_warnings)
+                    estimate = {
+                        "flight_option": f"Option {f_idx + 1} ({f_provider})",
+                        "flight_option_id": repr(combination_id[0]),
+                        "flight_price": float(flight_price),
+                        "flight_reported_price": float(reported_flight_price),
+                        "flight_scope": flight_scope,
+                        "hotel_option": f"Option {h_idx + 1} ({h_name})",
+                        "hotel_option_id": repr(combination_id[1]),
+                        "hotel_total": float(h_total),
+                        "hotel_nightly": h_nightly,
+                        "hotel_scope": f"Total for {nights} night{'s' if nights != 1 else ''}",
+                        "combined_total": comb_total,
+                        "currency": "INR",
+                        "formatted_total": f"₹{comb_total:,.0f}",
+                        "price_confidence": "verified" if is_verified else "provisional",
+                        "price_warning": " ".join(scope_warnings) or None,
+                        "inclusions": (
+                            f"Provider-reported flight fare ({flight_scope}) + "
+                            f"accommodation total for {nights} night"
+                            f"{'s' if nights != 1 else ''}"
+                        ),
+                        "exclusions": "Excludes local transfers, meals, attraction entry fees, visa, and personal expenses.",
+                        "disclaimer": (
+                            "Search estimate only. Fares and room rates are subject to real-time availability and provider confirmation; prices are not guaranteed until booked."
+                            + (f" {estimate_warning}" if estimate_warning else "")
+                        ),
+                        "status": "available",
+                    }
+                    if is_verified and comparison_budget and "status" not in comparison_budget:
+                        comparison_amount = (
+                            comb_total / travelers
+                            if comparison_budget["basis"] == "per_person"
+                            else comb_total
+                        )
+                        minimum = comparison_budget["min_amount"]
+                        maximum = comparison_budget["max_amount"]
+                        if maximum is not None and comparison_amount > maximum:
+                            budget_status = "above"
+                        elif minimum is not None and comparison_amount < minimum:
+                            budget_status = "below"
+                        else:
+                            budget_status = "within"
+                        estimate["saved_budget_comparison"] = {
+                            **comparison_budget,
+                            "status": budget_status,
+                            "travelers": travelers,
+                            "comparison_amount": comparison_amount,
+                            "comparison_label": (
+                                f"INR {comparison_amount:,.0f} per traveler "
+                                f"({travelers} travelers)"
+                                if comparison_budget["basis"] == "per_person"
+                                else f"INR {comparison_amount:,.0f} for the full trip"
+                            ),
+                        }
+                    elif is_verified and comparison_budget:
+                        estimate["saved_budget_comparison"] = comparison_budget
+                    combined_estimates.append(estimate)
 
         response_data["combined_trip_cost"] = {
             "status": "available" if any(c.get("status") == "available" for c in combined_estimates) else "unavailable",
