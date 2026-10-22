@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
-    function displayPlan(plan, transportResults, hotelResults, combinedTripCost) {
+    function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
             <p><em>${plan.request_summary || ''}</em></p>
@@ -320,6 +320,49 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `</div>`;
         }
 
+        if (itineraryResults) {
+            html += `<div class="plan-result" style="margin-top:15px; border-left:4px solid #0f766e;">
+                <h4 style="margin:0; color:#0f766e;">🗓️ Suggested day-by-day itinerary</h4>`;
+
+            if (itineraryResults.status === "success") {
+                html += `<p style="font-size:0.9rem; color:#475569;">${escapeHtml(itineraryResults.summary || '')}</p>
+                    <div style="font-size:0.8rem; color:#115e59; background:#f0fdfa; padding:8px 10px; border-radius:4px; margin:8px 0 12px;">
+                        ${escapeHtml(itineraryResults.notice || 'AI-generated suggestions. Verify details before travel.')}
+                    </div>`;
+                (itineraryResults.days || []).forEach(day => {
+                    html += `<section style="margin-top:12px; padding:10px; border:1px solid #ccfbf1; border-radius:6px;">
+                        <h5 style="margin:0 0 8px; color:#134e4a;">${escapeHtml(day.date)} · ${escapeHtml(day.title || '')}</h5>`;
+                    if (day.activities && day.activities.length) {
+                        html += `<div style="display:flex; flex-direction:column; gap:7px;">`;
+                        day.activities.forEach(activity => {
+                            const location = activity.location
+                                ? ` · ${escapeHtml(activity.location)}`
+                                : '';
+                            html += `<div style="padding:7px 9px; background:#f8fafc; border-radius:4px;">
+                                <div><strong>${escapeHtml(activity.start_time)}–${escapeHtml(activity.end_time)}</strong>
+                                    · ${escapeHtml(activity.title)}${location}
+                                    <span style="font-size:0.75rem; color:#64748b;"> (${escapeHtml(activity.category)})</span>
+                                </div>
+                                <div style="font-size:0.85rem; color:#475569; margin-top:3px;">${escapeHtml(activity.description)}</div>
+                            </div>`;
+                        });
+                        html += `</div>`;
+                    } else {
+                        html += `<p style="margin:0; color:#64748b;">No activities suggested for this day.</p>`;
+                    }
+                    html += `</section>`;
+                });
+            } else {
+                const itineraryMessage = itineraryResults.message
+                    || (itineraryResults.missing_information || []).join(', ')
+                    || 'An itinerary could not be generated.';
+                html += `<div class="plan-section missing" style="margin-top:10px;">
+                    <strong>Itinerary unavailable:</strong> ${escapeHtml(itineraryMessage)}
+                </div>`;
+            }
+            html += `</div>`;
+        }
+
         // Render Combined Estimated Trip Cost Section
         if (combinedTripCost) {
             html += `<div class="plan-result" style="margin-top: 15px; border-left: 4px solid #8b5cf6;">
@@ -480,9 +523,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         appendMessage('🏨 Hotel Agent', '<em>Searching accommodation options...</em>');
                     } else if (data.agent === 'hotel_agent' && data.status === 'completed') {
                         appendMessage('🏨 Hotel Agent', '<em>Hotel search completed.</em>');
+                    } else if (data.agent === 'itinerary_agent' && data.status === 'generating') {
+                        appendMessage('🗓️ Itinerary Agent', '<em>Creating your day-by-day suggestions...</em>');
+                    } else if (data.agent === 'itinerary_agent' && data.status === 'success') {
+                        appendMessage('🗓️ Itinerary Agent', '<em>Your itinerary suggestions are ready.</em>');
+                    } else if (data.agent === 'itinerary_agent' && data.status !== 'completed') {
+                        appendMessage('🗓️ Itinerary Agent', `<em>Itinerary generation ${escapeHtml(data.status)}.</em>`);
                     }
                 } else if (data.type === 'plan') {
-                    displayPlan(data.data.plan, data.data.transport_results, data.data.hotel_results, data.data.combined_trip_cost);
+                    displayPlan(
+                        data.data.plan,
+                        data.data.transport_results,
+                        data.data.hotel_results,
+                        data.data.combined_trip_cost,
+                        data.data.itinerary_results
+                    );
                 } else {
                     appendMessage('Server', event.data);
                 }
