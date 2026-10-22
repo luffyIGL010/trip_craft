@@ -281,7 +281,18 @@ class ReplanningService:
                     "message": "A verified INR flight-and-hotel total is unavailable for comparison with the current-trip budget.",
                 })
         else:
-            if (plan.get("budget") or {}).get("amount") is not None:
+            explicit_budget = plan.get("budget") or {}
+            if (
+                explicit_budget.get("amount") is not None
+                and explicit_budget.get("basis") in {"total_trip", "per_person"}
+                and (explicit_budget.get("currency") or "").upper() != "INR"
+            ):
+                checks.append({"name": "current_trip_budget", "status": "unable_to_validate"})
+                unavailable.append({
+                    "code": "budget_currency_unsupported",
+                    "message": "The current-trip budget currency cannot be compared without a supported conversion.",
+                })
+            elif explicit_budget.get("amount") is not None:
                 checks.append({"name": "current_trip_budget", "status": "unable_to_validate"})
                 unavailable.append({
                     "code": "budget_basis_unverified",
@@ -327,7 +338,8 @@ class ReplanningService:
             )
             return_leg = _field(paired, "outbound_leg")
         departure = _field(return_leg, "departure_time")
-        return bool(arrival and departure)
+        round_trip = bool(transport.get("return_date")) or transport.get("trip_type") == "round_trip"
+        return bool(arrival and (departure if round_trip else True))
 
     @staticmethod
     def _detect_flight_timing_conflict(itinerary, transport, conflicts):
