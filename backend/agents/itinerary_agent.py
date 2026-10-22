@@ -219,7 +219,7 @@ class ItineraryAgent:
         departure_candidates = []
         reference_option_id = None
 
-        if transport_status == "success":
+        if transport_status == "success" and not is_mock_flights:
             for option in (_field(transport_results, "options", []) or [])[:5]:
                 option_id = _field(option, "option_id")
                 outbound = _leg_context(_field(option, "outbound_leg"))
@@ -285,29 +285,29 @@ class ItineraryAgent:
             "reference_option_id": reference_option_id,
             "arrival": (
                 {"date": arrival.date().isoformat(), "time": arrival.strftime("%H:%M")}
-                if arrival and not is_mock_flights
+                if arrival
                 else None
             ),
             "return_departure": (
                 {"date": departure.date().isoformat(), "time": departure.strftime("%H:%M")}
-                if departure and not is_mock_flights
+                if departure
                 else None
             ),
             "assumption": (
                 "Flight timing uses a search result as a planning reference, not a booked or selected flight."
-                if (arrival or departure) and not is_mock_flights
+                if arrival or departure
                 else None
             ),
         }
         constraints = {
             "arrival": (
                 (arrival.date(), arrival.time())
-                if arrival and not is_mock_flights
+                if arrival
                 else None
             ),
             "return_departure": (
                 (departure.date(), departure.time())
-                if departure and not is_mock_flights
+                if departure
                 else None
             ),
         }

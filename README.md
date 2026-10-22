@@ -106,10 +106,14 @@ Open `frontend/index.html` in your browser.
 | 3 | `Plan a trip to Manali for 3 people from Delhi` | Destination: Manali, Origin: Delhi, Travelers: 3, Missing: dates, budget |
 | 4 | *(empty message)* | Error: "Please enter a travel request" |
 
+## Phase 7: Itinerary Agent
+
+Requests for an itinerary, day-by-day plan, or daily schedule are routed through the existing authenticated chat workflow. With `GROQ_API_KEY` configured, the Itinerary Agent uses the existing Groq client to produce one day per trip date, with practical activity and meal/free-time suggestions. It receives only the available flight timing and hotel option details; mock flight results are not treated as travel-time constraints. The UI labels all itinerary content as AI-generated suggestions and asks travelers to verify hours, availability, prices, and local conditions. No destination/activity API is currently integrated, so live opening hours, ticket prices, availability, and travel durations are not provided. Itineraries are limited to 30 calendar days; without model configuration or on malformed model output, the agent returns a clear error instead of fabricated suggestions.
+
 ## What is NOT Built Yet (Intentionally)
 
-- Specialized agents (Travel, Hotel, Budget, Activity, Weather, Itinerary)
-- Real API calls for flights, hotels, weather, maps
+- Specialized activity, budget, and weather agents
+- Real API calls for weather, maps, and activities
 - Conversation-history memory (Redis or a vector database)
 - Production deployment
 
@@ -127,7 +131,7 @@ The authenticated API is under `/api/preferences`:
 - `DELETE /api/preferences/{preference_id}` deletes an owned preference.
 - `DELETE /api/preferences` clears the signed-in user's profile.
 
-The chat workflow saves only recognized, explicitly recurring preferences (for example, “I usually prefer budget hotels and historical places”). Saved preferences are suggestions: current-trip instructions take precedence. Total-trip INR budgets are compared with the combined estimate; per-traveler ranges are compared with the combined estimate divided by the requested traveler count. Unspecified budgets are not compared. Flight fares are labeled as round-trip only when the provider option includes both route legs; otherwise the UI identifies an outbound-only or unverified fare and does not include an unverified return. SerpApi's Google Flights response documents a `price` and a search `adults` parameter, but does not establish whether the returned price is per traveler or for the whole party. Accordingly, flight + hotel totals are withheld unless the flight fare's party-total scope is explicitly established. For round-trip searches, return choices are fetched separately using the selected outbound `departure_token`; those return details are not assigned a separate fare or treated as interchangeable pairings. Duplicate combinations use provider option IDs when available and normalized option details otherwise. Activity and itinerary agents are not implemented yet, so interests and pace are currently passed through as planning context rather than generating those recommendations.
+The chat workflow saves only recognized, explicitly recurring preferences (for example, “I usually prefer budget hotels and historical places”). Saved preferences are suggestions: current-trip instructions take precedence. Total-trip INR budgets are compared with the combined estimate; per-traveler ranges are compared with the combined estimate divided by the requested traveler count. Unspecified budgets are not compared. Flight fares are labeled as round-trip only when the provider option includes both route legs; otherwise the UI identifies an outbound-only or unverified fare and does not include an unverified return. SerpApi's Google Flights response documents a `price` and a search `adults` parameter, but does not establish whether the returned price is per traveler or for the whole party. Accordingly, flight + hotel totals are withheld unless the flight fare's party-total scope is explicitly established. For round-trip searches, return choices are fetched separately using the selected outbound `departure_token`; those return details are not assigned a separate fare or treated as interchangeable pairings. Duplicate combinations use provider option IDs when available and normalized option details otherwise. The itinerary agent uses existing interests and preferences as planning context; it does not claim live activity availability or venue facts.
 
 Run focused preference and fare-mapping checks from the repository root with:
 
