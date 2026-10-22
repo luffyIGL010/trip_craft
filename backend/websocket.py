@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
+from jose import JWTError
 
 from database.database import get_db
 from database.models import User
