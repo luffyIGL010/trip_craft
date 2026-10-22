@@ -349,6 +349,9 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         })
         missing = await agent.execute(make_plan(destination=None))
         bad_date = await agent.execute(make_plan(dates=Dates(start="2027-02-30")))
+        reversed_dates = await agent.execute(
+            make_plan(dates=Dates(start="2027-05-03", end="2027-05-01"))
+        )
         missing_end = await agent.execute(
             make_plan(dates=Dates(start="2027-05-01"), duration_days=None)
         )
@@ -356,6 +359,7 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(missing.status, "needs_information")
         self.assertIn("destination", missing.missing_information)
         self.assertEqual(bad_date.status, "error")
+        self.assertIn("on or after", reversed_dates.message)
         self.assertEqual(missing_end.status, "needs_information")
         self.assertIn("end_date_or_duration", missing_end.missing_information)
         client.chat.completions.create.assert_not_called()

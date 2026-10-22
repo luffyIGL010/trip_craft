@@ -6,20 +6,20 @@ from pydantic import BaseModel, Field
 class ItineraryActivity(BaseModel):
     start_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     end_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    title: str
+    title: str = Field(min_length=1)
     category: Literal["activity", "meal", "free_time", "transfer", "rest"]
     location: Optional[str] = None
-    description: str
+    description: str = Field(min_length=1)
 
 
 class ItineraryDay(BaseModel):
     date: str
-    title: str
+    title: str = Field(min_length=1)
     activities: List[ItineraryActivity]
 
 
 class ItineraryContent(BaseModel):
-    summary: str
+    summary: str = Field(min_length=1)
     days: List[ItineraryDay]
 
 
