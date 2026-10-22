@@ -464,6 +464,16 @@ class ReplanningOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                 agent.itinerary_agent.execute = AsyncMock(
                     return_value=ItineraryResult(status="error")
                 )
+                agent.weather_service.get_trip_weather = AsyncMock(return_value={
+                    "status": "unavailable",
+                    "destination": "Singapore",
+                    "location": None,
+                    "timezone": None,
+                    "current": None,
+                    "days": [],
+                    "message": "Forecast dates unavailable.",
+                    "source": "Open-Meteo",
+                })
 
                 result = await agent.process_request(
                     "Replan my Singapore trip",
