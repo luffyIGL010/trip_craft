@@ -69,14 +69,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayPlan(plan, transportResults, hotelResults, combinedTripCost, itineraryResults, replanning, tripId, preferenceLimitations) {
         let html = `<div class="plan-result">
             <h4>🗺️ Master Agent Plan</h4>
-            <p><em>${plan.request_summary || ''}</em></p>
+            <p><em>${escapeHtml(plan.request_summary || '')}</em></p>
             <div class="plan-grid">
-                <div><strong>📍 Destination:</strong> ${plan.destination || '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>🏠 Origin:</strong> ${plan.origin || '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>📅 Departure:</strong> ${plan.dates && plan.dates.start ? plan.dates.start : '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>📅 Duration:</strong> ${plan.duration_days ? plan.duration_days + ' calendar days' : '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>👥 Travelers:</strong> ${plan.travelers || '<span class="text-muted">Not specified</span>'}</div>
-                <div><strong>💰 Budget:</strong> ${plan.budget && plan.budget.amount ? '₹' + plan.budget.amount.toLocaleString() : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>📍 Destination:</strong> ${plan.destination ? escapeHtml(plan.destination) : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>🏠 Origin:</strong> ${plan.origin ? escapeHtml(plan.origin) : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>📅 Departure:</strong> ${plan.dates && plan.dates.start ? escapeHtml(plan.dates.start) : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>📅 Duration:</strong> ${plan.duration_days ? escapeHtml(plan.duration_days) + ' calendar days' : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>👥 Travelers:</strong> ${plan.travelers ? escapeHtml(plan.travelers) : '<span class="text-muted">Not specified</span>'}</div>
+                <div><strong>💰 Budget:</strong> ${plan.budget && plan.budget.amount ? `${escapeHtml(plan.budget.currency || 'INR')} ${Number(plan.budget.amount).toLocaleString()}` : '<span class="text-muted">Not specified</span>'}</div>
             </div>`;
         
         if (plan.preferences && plan.preferences.length > 0) {
@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (transportResults.status === "success" && transportResults.options.length > 0) {
                 // Trip Header Summary
                 html += `<div style="margin-top:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
-                    <div style="font-size:0.95rem;"><strong>${transportResults.origin} ${isRoundTrip ? '⇄' : '→'} ${transportResults.destination}</strong></div>
+                    <div style="font-size:0.95rem;"><strong>${escapeHtml(transportResults.origin || '')} ${isRoundTrip ? '⇄' : '→'} ${escapeHtml(transportResults.destination || '')}</strong></div>
                     <div style="font-size:0.85rem; color:#64748b;">
                         📅 ${transportResults.outbound_date ? 'Outbound: ' + transportResults.outbound_date : ''}
                         ${transportResults.return_date ? ' | Return: ' + transportResults.return_date : ''}
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += `<div style="margin-top:10px;">
                     <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
                         <span>🛫 Flight Itinerary Options</span>
-                        <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.origin} → ${transportResults.destination} • ${transportResults.outbound_date || ''})</span>
+                        <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${escapeHtml(transportResults.origin || '')} → ${escapeHtml(transportResults.destination || '')} • ${escapeHtml(transportResults.outbound_date || '')})</span>
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">`;
                 
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += `<div style="margin-top:14px;">
                         <div style="font-weight:600; font-size:0.9rem; color:#1e293b; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
                             <span>🛬 Return-leg options for the selected outbound (return fare not included)</span>
-                            <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${transportResults.destination} → ${transportResults.origin} • ${transportResults.return_date || ''})</span>
+                            <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">(${escapeHtml(transportResults.destination || '')} → ${escapeHtml(transportResults.origin || '')} • ${escapeHtml(transportResults.return_date || '')})</span>
                         </div>
                         <div style="display:flex; flex-direction:column; gap:8px;">`;
 
