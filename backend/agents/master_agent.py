@@ -103,7 +103,7 @@ You must extract the following from the user's message:
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
 - budget.basis: "total_trip" or "per_person" only when the user explicitly states that basis; otherwise null.
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
-- tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip.
+- tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip. Include "check_weather" when the user requests weather or asks for a dated itinerary where forecast context can guide activities.
 - Include "create_itinerary" when the user requests an itinerary, a day-by-day plan, or a daily schedule.
 - missing_information: A list of important missing details the user did not provide (e.g. "origin", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels. Budget is optional and should NOT be added to missing_information merely because it is unspecified.
 
@@ -379,7 +379,7 @@ class MasterAgent:
         elif hotel_inputs_unchanged:
             response_data["hotel_results"] = previous_hotels
 
-        if wants_itinerary or wants_weather or plan.tasks:
+        if wants_itinerary or wants_weather or "check_weather" in plan.tasks:
             try:
                 response_data["weather_results"] = await self.weather_service.get_trip_weather(
                     destination=plan.destination,
