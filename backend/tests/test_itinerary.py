@@ -1,4 +1,3 @@
-import asyncio
 import json
 import unittest
 from types import SimpleNamespace
@@ -213,13 +212,47 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
             "total_trip",
         )
 
-    async def test_rejects_activity_before_arrival_and_after_return_departure(self):
+    async def test_rejects_activity_before_destination_arrival(self):
         invalid_days = make_days()
         invalid_days[0]["activities"][0]["start_time"] = "11:00"
         invalid_days[0]["activities"][0]["end_time"] = "12:00"
+        agent, _ = configured_itinerary_agent({
+            "summary": "Activity before arrival",
+            "days": invalid_days,
+        })
+        transport = TransportResult(
+            status="success",
+            is_mock=False,
+            options=[
+                TransportOption(
+                    option_id="flight-1",
+                    provider="Air",
+                    departure="out",
+                    arrival="in",
+                    duration="4h",
+                    stops=0,
+                    outbound_leg=FlightLeg(
+                        provider="Air",
+                        arrival_time="2027-05-01T12:30",
+                    ),
+                    return_leg=FlightLeg(
+                        provider="Air",
+                        departure_time="2027-05-03T17:30",
+                    ),
+                )
+            ],
+        )
+
+        result = await agent.execute(make_plan(), transport_results=transport)
+
+        self.assertEqual(result.status, "error")
+        self.assertIn("invalid schedule", result.message)
+
+    async def test_rejects_activity_after_return_departure(self):
+        invalid_days = make_days()
         invalid_days[2]["activities"][1]["end_time"] = "18:00"
         agent, _ = configured_itinerary_agent({
-            "summary": "Invalid schedule",
+            "summary": "Activity after departure",
             "days": invalid_days,
         })
         transport = TransportResult(
@@ -305,6 +338,18 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.duration_days, 2)
         self.assertEqual(too_long.status, "error")
         self.assertIn("limited to 30 days", too_long.message)
+
+    async def test_rejects_duration_conflicting_with_trip_dates(self):
+        agent, client = configured_itinerary_agent({
+            "summary": "Should not be called",
+            "days": make_days(),
+        })
+
+        result = await agent.execute(make_plan(duration_days=4))
+
+        self.assertEqual(result.status, "error")
+        self.assertIn("does not match", result.message)
+        client.chat.completions.create.assert_not_called()
 
     async def test_reports_malformed_model_response_and_provider_failure(self):
         malformed_agent, _ = configured_itinerary_agent({"days": "not a list"})
