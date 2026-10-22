@@ -139,3 +139,80 @@ Run focused preference and fare-mapping checks from the repository root with:
 ```bash
 PYTHONPATH=backend venv/bin/python -m unittest discover -s backend/tests -v
 ```
+
+## Phase 8 — Memory System
+
+### Overview
+
+Phase 8 introduces a persistent memory system to TravelAgent, enabling the application to retain relevant conversation context, user travel preferences, and saved trip information across interactions.
+
+The memory system helps the Master Agent and specialized travel agents provide more personalized and context-aware responses without requiring users to repeat information unnecessarily.
+
+### Features
+
+- **Conversation Memory:** Retains relevant conversation history and summaries to maintain context across messages.
+- **User Preference Memory:** Stores useful travel preferences such as budget preferences, interests, accommodation choices, and preferred travel pace.
+- **Trip Memory:** Maintains saved trip details, itinerary information, selected options, and user-approved changes.
+- **Persistent Storage:** Uses the existing database architecture to preserve supported memory data across backend restarts.
+- **Context Retrieval:** Retrieves relevant stored information when processing new travel requests.
+- **Memory Management:** Supports reviewing, updating, and deleting saved preferences or trip information where implemented.
+- **User Isolation:** Associates private memories with the authenticated user to prevent unauthorized access.
+- **Bounded Context:** Uses relevant history and summaries instead of repeatedly sending the entire conversation to the AI model.
+
+### How It Works
+
+1. The user interacts with TravelAgent through the existing chat interface.
+2. Relevant conversation details and user-approved preferences are identified.
+3. Supported memory data is stored against the appropriate user, conversation, or trip.
+4. When a new request arrives, relevant memories are retrieved.
+5. The Master Agent and appropriate sub-agents use that context to generate more personalized travel recommendations.
+6. Users can manage saved information through the available memory-management functionality.
+
+### Memory Categories
+
+| Category | Purpose |
+|---|---|
+| Conversation Memory | Maintains relevant previous discussion context |
+| User Memory | Stores recurring travel preferences |
+| Trip Memory | Stores trip details, itinerary and approved changes |
+
+### Security and Privacy
+
+- Memory access is restricted to the authenticated user's authorized data.
+- User ownership is checked before reading, updating, or deleting private records.
+- Passwords, JWTs, API keys, and payment secrets must not be stored in memory.
+- Conversation history and saved preferences should have separate deletion controls where implemented.
+
+### Technology
+
+- Python
+- FastAPI
+- SQLAlchemy
+- Existing project database
+- Existing Master Agent and specialized agents
+- Existing LLM configuration
+
+*The exact storage and retrieval implementation follows the project's existing architecture.*
+
+### Testing
+
+The following behaviors should be verified:
+
+- Memory persists after restarting the backend.
+- Relevant preferences and trip details are retrieved for subsequent requests.
+- Memory can be updated and deleted where supported.
+- Different users cannot access each other's memories.
+- Long conversations do not cause unbounded context growth.
+- Existing authentication, WebSocket chat, flight search, hotel search, itinerary generation, and PayPal functionality continue working.
+
+### Phase Status
+
+**Phase 8 — Memory System**
+
+Status: Mark complete only after implementation and tests have been verified.
+
+### Next Phase
+
+**Phase 9 — Agentic Re-planning**
+
+The next phase will introduce itinerary validation and adaptive re-planning based on changes to travel constraints, budget, schedules, and available external information.
