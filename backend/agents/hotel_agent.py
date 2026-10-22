@@ -2,12 +2,31 @@ import logging
 import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from schemas.hotel import HotelResult, HotelOption
 from services.hotel_api import HotelAPIClient
 from agents.schemas import MasterAgentResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _trusted_image_url(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    try:
+        parsed = urlsplit(candidate)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+        ):
+            return None
+    except ValueError:
+        return None
+    return candidate
 
 # Common IATA airport codes mapped to city names for hotel location search
 AIRPORT_TO_CITY: Dict[str, str] = {
@@ -204,10 +223,14 @@ class HotelAgent:
                 images = []
                 if isinstance(raw_images, list):
                     for img in raw_images:
-                        if isinstance(img, dict) and img.get("thumbnail"):
-                            images.append(img["thumbnail"])
-                        elif isinstance(img, str):
-                            images.append(img)
+                        candidate = (
+                            img.get("thumbnail") or img.get("original_image")
+                            if isinstance(img, dict)
+                            else img
+                        )
+                        trusted_url = _trusted_image_url(candidate)
+                        if trusted_url and trusted_url not in images:
+                            images.append(trusted_url)
 
                 # Check-in/out times or nearby context as address info if specific address not given
                 check_in_time = prop.get("check_in_time")
