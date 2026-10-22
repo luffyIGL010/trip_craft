@@ -2,13 +2,19 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
-# SQLite database file will be created in the backend directory
-DATABASE_URL = "sqlite:///./travelagent.db"
+def _normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
 
-# connect_args={"check_same_thread": False} is required only for SQLite in FastAPI
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+
+DATABASE_URL = _normalize_database_url(
+    os.getenv("DATABASE_URL", "sqlite:///./travelagent.db")
 )
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
