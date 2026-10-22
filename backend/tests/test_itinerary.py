@@ -434,6 +434,17 @@ class ItineraryAgentTests(unittest.IsolatedAsyncioTestCase):
 
 
 class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
+    def test_mock_plan_routes_itinerary_without_unrequested_search_tasks(self):
+        agent = MasterAgent()
+
+        plan = agent._mock_response(
+            "Create a day-by-day itinerary for Goa from Delhi "
+            "from May 1, 2027 to May 3, 2027 for 2 adults"
+        )
+
+        self.assertEqual(plan.tasks, ["create_itinerary"])
+        self.assertEqual(plan.duration_days, 3)
+
     async def test_routes_day_by_day_request_and_passes_provider_results(self):
         agent = MasterAgent()
         agent.client = None

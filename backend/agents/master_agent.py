@@ -645,7 +645,7 @@ class MasterAgent:
             tasks = ["find_transport", "find_hotel"]
         if is_itinerary_intent:
             tasks.append("create_itinerary")
-        if not tasks:
+        if not tasks and not is_itinerary_intent:
             tasks = ["find_transport", "find_hotel"]
 
         # 6. Determine missing information (budget is optional and never required)
