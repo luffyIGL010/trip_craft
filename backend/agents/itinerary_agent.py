@@ -335,6 +335,10 @@ class ItineraryAgent:
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "duration_days": (end_date - start_date).days + 1,
+            "trip_dates": [
+                (start_date + timedelta(days=offset)).isoformat()
+                for offset in range((end_date - start_date).days + 1)
+            ],
             "travelers": plan.travelers,
             "interests_and_preferences": plan.preferences,
             "budget": {
@@ -377,13 +381,14 @@ class ItineraryAgent:
 
         seen_activities = set()
         for day in content.days:
+            itinerary_date = date.fromisoformat(day.date)
             previous_end = None
             for activity in day.activities:
                 activity_start = datetime.combine(
-                    day.date, time.fromisoformat(activity.start_time)
+                    itinerary_date, time.fromisoformat(activity.start_time)
                 )
                 activity_end = datetime.combine(
-                    day.date, time.fromisoformat(activity.end_time)
+                    itinerary_date, time.fromisoformat(activity.end_time)
                 )
                 if activity_end <= activity_start:
                     raise ValueError("Activity end time must follow its start time.")
@@ -400,13 +405,13 @@ class ItineraryAgent:
                     seen_activities.add(normalized_title)
 
                 arrival = timing_constraints.get("arrival")
-                if arrival and day.date == arrival[0] and activity_start.time() < arrival[1]:
+                if arrival and itinerary_date == arrival[0] and activity_start.time() < arrival[1]:
                     raise ValueError("An activity is scheduled before the destination arrival.")
 
                 departure = timing_constraints.get("return_departure")
                 if (
                     departure
-                    and day.date == departure[0]
+                    and itinerary_date == departure[0]
                     and activity_end.time() > departure[1]
                 ):
                     raise ValueError("An activity is scheduled after the return departure.")

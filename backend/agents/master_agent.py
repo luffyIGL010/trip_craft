@@ -6,6 +6,7 @@ from datetime import datetime
 from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
 from .hotel_agent import HotelAgent
+from .itinerary_agent import ItineraryAgent
 from preferences.service import (
     accommodation_preference_from_request,
     explicit_categories_in_request,
@@ -90,6 +91,7 @@ You must extract the following from the user's message:
 - budget: An object with "amount" (number or null) and "currency" (default "INR").
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
 - tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip.
+- Include "create_itinerary" when the user requests an itinerary, a day-by-day plan, or a daily schedule.
 - missing_information: A list of important missing details the user did not provide (e.g. "origin", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels. Budget is optional and should NOT be added to missing_information merely because it is unspecified.
 
 Rules:
@@ -117,6 +119,7 @@ class MasterAgent:
             
         self.travel_agent = TravelAgent()
         self.hotel_agent = HotelAgent()
+        self.itinerary_agent = ItineraryAgent(client=self.client)
 
     async def process_request(
         self,
@@ -137,6 +140,18 @@ class MasterAgent:
             plan = self._call_llm(user_message)
         else:
             plan = self._mock_response(user_message)
+
+        wants_itinerary = (
+            "create_itinerary" in plan.tasks
+            or re.search(
+                r"\bitinerary\b|\bday[- ]by[- ]day\b|\bdaily schedule\b|\bplan each day\b",
+                user_message,
+                re.IGNORECASE,
+            )
+            is not None
+        )
+        if wants_itinerary and "create_itinerary" not in plan.tasks:
+            plan.tasks.append("create_itinerary")
 
         current_categories = explicit_categories_in_request(user_message)
         if plan.budget.amount is not None:
@@ -165,7 +180,8 @@ class MasterAgent:
         response_data = {
             "plan": plan.model_dump(),
             "transport_results": None,
-            "hotel_results": None
+            "hotel_results": None,
+            "itinerary_results": None,
         }
         
         # Phase 5: Delegate to Travel Agent if "find_transport" is a task
@@ -236,6 +252,19 @@ class MasterAgent:
 
             if status_callback:
                 await status_callback("hotel_agent", "completed")
+
+        if wants_itinerary:
+            if status_callback:
+                await status_callback("itinerary_agent", "generating")
+            itinerary_result = await self.itinerary_agent.execute(
+                plan,
+                transport_results=response_data["transport_results"],
+                hotel_results=response_data["hotel_results"],
+                saved_preferences=applicable_preferences,
+            )
+            response_data["itinerary_results"] = itinerary_result.model_dump()
+            if status_callback:
+                await status_callback("itinerary_agent", itinerary_result.status)
 
         # Calculate combined estimated trip cost for flight + hotel pairs
         combined_estimates = []
@@ -601,6 +630,10 @@ class MasterAgent:
         # 5. Determine tasks
         is_hotel_intent = "hotel" in msg or "hotels" in msg or "stay" in msg or "accommodation" in msg
         is_flight_intent = "flight" in msg or "flights" in msg or "fly" in msg or "transport" in msg
+        is_itinerary_intent = bool(re.search(
+            r"\bitinerary\b|\bday[- ]by[- ]day\b|\bdaily schedule\b|\bplan each day\b",
+            msg,
+        ))
         is_general_trip = "plan a trip" in msg or "trip to" in msg or "plan a 5 day" in msg or "plan a 7" in msg or "plan a" in msg
 
         tasks = []
@@ -610,6 +643,8 @@ class MasterAgent:
             tasks.append("find_hotel")
         if is_flight_intent and is_hotel_intent:
             tasks = ["find_transport", "find_hotel"]
+        if is_itinerary_intent:
+            tasks.append("create_itinerary")
         if not tasks:
             tasks = ["find_transport", "find_hotel"]
 
