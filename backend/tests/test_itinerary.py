@@ -623,7 +623,7 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["plan"]["duration_days"], 8)
         self.assertEqual(
             result["plan"]["tasks"],
-            ["find_transport", "find_hotel", "create_itinerary", "check_weather"],
+            ["find_transport", "find_hotel", "check_weather", "create_itinerary"],
         )
         agent.travel_agent.execute.assert_awaited_once()
         agent.hotel_agent.execute.assert_awaited_once()

@@ -237,6 +237,11 @@ class MasterAgent:
         )
         if should_fetch_weather and "check_weather" not in plan.tasks:
             plan.tasks.append("check_weather")
+        if wants_itinerary:
+            plan.tasks = [
+                task for task in plan.tasks if task != "create_itinerary"
+            ]
+            plan.tasks.append("create_itinerary")
 
         current_categories = explicit_categories_in_request(user_message)
         if plan.budget.amount is not None:
