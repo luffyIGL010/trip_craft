@@ -453,16 +453,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (itineraryResults) {
             html += `<div class="plan-result" style="margin-top:15px; border-left:4px solid #0f766e;">
-                <h4 style="margin:0; color:#0f766e;">🗓️ Suggested day-by-day itinerary</h4>`;
+                <h4 style="margin:0; color:#0f766e;">🗺️ Your Day-by-Day Itinerary</h4>`;
 
             if (itineraryResults.status === "success") {
                 html += `<p style="font-size:0.9rem; color:#475569;">${escapeHtml(itineraryResults.summary || '')}</p>
                     <div style="font-size:0.8rem; color:#115e59; background:#f0fdfa; padding:8px 10px; border-radius:4px; margin:8px 0 12px;">
                         ${escapeHtml(itineraryResults.notice || 'AI-generated suggestions. Verify details before travel.')}
                     </div>`;
-                (itineraryResults.days || []).forEach(day => {
+                (itineraryResults.days || []).forEach((day, index) => {
                     html += `<section style="margin-top:12px; padding:10px; border:1px solid #ccfbf1; border-radius:6px;">
-                        <h5 style="margin:0 0 8px; color:#134e4a;">${escapeHtml(day.date)} · ${escapeHtml(day.title || '')}</h5>`;
+                        <h5 style="margin:0 0 8px; color:#134e4a;">Day ${index + 1} — ${escapeHtml(day.date)}</h5>
+                        <strong style="display:block; margin-bottom:8px; color:#134e4a;">${escapeHtml(day.title || '')}</strong>`;
                     if (day.activities && day.activities.length) {
                         html += `<div style="display:flex; flex-direction:column; gap:7px;">`;
                         day.activities.forEach(activity => {

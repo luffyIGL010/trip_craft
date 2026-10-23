@@ -8,6 +8,7 @@ from .schemas import MasterAgentResponse, Dates, Budget
 from .travel_agent import TravelAgent
 from .hotel_agent import HotelAgent
 from .itinerary_agent import ItineraryAgent
+from schemas.itinerary import ItineraryResult
 from services.weather_api import OpenMeteoWeatherService
 from preferences.service import (
     accommodation_preference_from_request,
@@ -104,7 +105,7 @@ You must extract the following from the user's message:
 - budget.basis: "total_trip" or "per_person" only when the user explicitly states that basis; otherwise null.
 - preferences: A list of interests/preferences mentioned (e.g. ["adventure", "beaches"]).
 - tasks: A list of planning tasks required. Choose from: "find_transport", "find_hotel", "find_hotels", "find_activities", "create_itinerary", "check_budget", "check_weather". Include "find_hotel" when the user requests hotels or accommodation. Include "find_transport" when the user requests flights or transport. Include both when planning a full trip. Include "check_weather" when a trip has a destination and travel dates, or when weather is explicitly requested.
-- Include "create_itinerary" when the user requests an itinerary, a day-by-day plan, or a daily schedule.
+- Include "create_itinerary" when the user requests an itinerary, a day-by-day plan, or a daily schedule, and when planning a complete trip with a destination and travel dates.
 - missing_information: A list of important missing details the user did not provide (e.g. "origin", "travel dates or duration", "number of travelers"). Note: origin is only needed if finding transport; travel dates (check-in and check-out) are needed for hotels. Budget is optional and should NOT be added to missing_information merely because it is unspecified.
 
 Rules:
@@ -202,6 +203,13 @@ class MasterAgent:
             if saved_destination:
                 plan.destination = saved_destination
 
+        trip_tasks = set(plan.tasks)
+        has_complete_trip = (
+            bool(plan.destination and plan.dates and plan.dates.start)
+            and bool(plan.dates.end or plan.duration_days)
+            and bool(trip_tasks & {"find_transport"})
+            and bool(trip_tasks & {"find_hotel", "find_hotels"})
+        )
         wants_itinerary = (
             "create_itinerary" in plan.tasks
             or re.search(
@@ -210,6 +218,7 @@ class MasterAgent:
                 re.IGNORECASE,
             )
             is not None
+            or has_complete_trip
         )
         if wants_itinerary and "create_itinerary" not in plan.tasks:
             plan.tasks.append("create_itinerary")
@@ -423,13 +432,32 @@ class MasterAgent:
         if wants_itinerary:
             if status_callback:
                 await status_callback("itinerary_agent", "generating")
-            itinerary_result = await self.itinerary_agent.execute(
-                plan,
-                transport_results=response_data["transport_results"],
-                hotel_results=response_data["hotel_results"],
-                saved_preferences=applicable_preferences,
-                weather_results=response_data["weather_results"],
-            )
+            try:
+                itinerary_result = await self.itinerary_agent.execute(
+                    plan,
+                    transport_results=response_data["transport_results"],
+                    hotel_results=response_data["hotel_results"],
+                    saved_preferences=applicable_preferences,
+                    weather_results=response_data["weather_results"],
+                )
+            except Exception:
+                logger.exception(
+                    "Itinerary generation failed; continuing with the rest of the trip plan."
+                )
+                itinerary_result = ItineraryResult(
+                    status="error",
+                    destination=plan.destination,
+                    duration_days=plan.duration_days,
+                    message=(
+                        "Itinerary could not be generated at the moment. "
+                        "Your flight and hotel results are still available."
+                    ),
+                )
+            if itinerary_result.status == "error":
+                itinerary_result.message = (
+                    "Itinerary could not be generated at the moment. "
+                    "Your flight and hotel results are still available."
+                )
             response_data["itinerary_results"] = itinerary_result.model_dump()
             if status_callback:
                 await status_callback("itinerary_agent", itinerary_result.status)
@@ -912,6 +940,28 @@ class MasterAgent:
         if not travelers:
             missing.append("number of travelers")
 
+        preferences = [
+            preference
+            for preference, pattern in (
+                ("history", r"\bhistor(?:y|ical|ic)\b"),
+                ("nature", r"\bnature\b|\bwildlife\b"),
+                ("food", r"\bfood\b|\bculinary\b"),
+                ("shopping", r"\bshopping\b"),
+                ("adventure", r"\badventure\b"),
+                ("culture", r"\bculture\b|\bcultural\b"),
+                ("relaxed pace", r"\brelaxed\b"),
+                ("balanced pace", r"\bbalanced\b"),
+                ("packed pace", r"\bpacked\b"),
+                ("vegetarian", r"\bvegetarian\b"),
+                ("vegan", r"\bvegan\b"),
+                ("halal", r"\bhalal\b"),
+                ("kosher", r"\bkosher\b"),
+                ("gluten-free", r"\bgluten[- ]free\b"),
+                ("wheelchair accessible", r"\bwheelchair\b|\bstep[- ]free\b"),
+            )
+            if re.search(pattern, msg)
+        ]
+
         return MasterAgentResponse(
             request_summary=f"User wants to travel to {destination}" + (f" from {origin}" if origin else ""),
             destination=destination,
@@ -924,7 +974,7 @@ class MasterAgent:
                 currency=budget_currency,
                 basis=budget_basis,
             ),
-            preferences=[],
+            preferences=preferences,
             tasks=tasks,
             missing_information=missing
         )
