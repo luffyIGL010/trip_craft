@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -581,6 +582,102 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("check_weather", result["plan"]["tasks"])
         self.assertEqual(result["weather_results"], weather)
         agent.weather_service.get_trip_weather.assert_awaited_once()
+
+    async def test_complete_dated_trip_generates_the_full_singapore_itinerary(self):
+        agent = MasterAgent()
+        agent.client = None
+        transport = TransportResult(status="success")
+        hotels = HotelResult(status="success")
+        weather = {
+            "status": "unavailable",
+            "destination": "Singapore",
+            "days": [],
+            "message": "Forecast unavailable; trip planning will continue.",
+        }
+        trip_dates = [
+            (date(2027, 5, 5) + timedelta(days=offset)).isoformat()
+            for offset in range(8)
+        ]
+        itinerary = ItineraryResult(
+            status="success",
+            destination="Singapore",
+            duration_days=8,
+            days=[
+                {"date": trip_date, "title": f"Day {index + 1}", "activities": []}
+                for index, trip_date in enumerate(trip_dates)
+            ],
+        )
+        agent.travel_agent.execute = AsyncMock(return_value=transport)
+        agent.hotel_agent.execute = AsyncMock(return_value=hotels)
+        agent.weather_service.get_trip_weather = AsyncMock(return_value=weather)
+        agent.itinerary_agent.execute = AsyncMock(return_value=itinerary)
+
+        result = await agent.process_request(
+            "Plan an international trip to Singapore from Bengaluru "
+            "from May 5, 2027 to May 12, 2027 for 2 adults"
+        )
+
+        self.assertEqual(result["plan"]["destination"], "Singapore")
+        self.assertEqual(result["plan"]["origin"], "Bengaluru")
+        self.assertEqual(result["plan"]["travelers"], 2)
+        self.assertEqual(result["plan"]["duration_days"], 8)
+        self.assertEqual(
+            result["plan"]["tasks"],
+            ["find_transport", "find_hotel", "create_itinerary", "check_weather"],
+        )
+        agent.travel_agent.execute.assert_awaited_once()
+        agent.hotel_agent.execute.assert_awaited_once()
+        agent.weather_service.get_trip_weather.assert_awaited_once()
+        agent.itinerary_agent.execute.assert_awaited_once()
+        self.assertEqual(
+            [day["date"] for day in result["itinerary_results"]["days"]],
+            trip_dates,
+        )
+        self.assertIsNotNone(result["combined_trip_cost"])
+
+    async def test_itinerary_exception_does_not_discard_other_trip_results(self):
+        agent = MasterAgent()
+        agent.client = None
+        agent._mock_response = Mock(return_value=make_plan())
+        transport = TransportResult(status="success")
+        hotels = HotelResult(status="success")
+        weather = {
+            "status": "unavailable",
+            "destination": "Goa",
+            "days": [],
+        }
+        agent.travel_agent.execute = AsyncMock(return_value=transport)
+        agent.hotel_agent.execute = AsyncMock(return_value=hotels)
+        agent.weather_service.get_trip_weather = AsyncMock(return_value=weather)
+        agent.itinerary_agent.execute = AsyncMock(
+            side_effect=RuntimeError("provider details must not reach the user")
+        )
+
+        result = await agent.process_request(
+            "Plan a trip to Goa from Delhi from May 1, 2027 to May 3, 2027"
+        )
+
+        self.assertEqual(result["transport_results"]["status"], "success")
+        self.assertEqual(result["hotel_results"]["status"], "success")
+        self.assertEqual(result["weather_results"], weather)
+        self.assertEqual(result["itinerary_results"]["status"], "error")
+        self.assertEqual(
+            result["itinerary_results"]["message"],
+            "Itinerary could not be generated at the moment. "
+            "Your flight and hotel results are still available.",
+        )
+        self.assertNotIn(
+            "provider details",
+            result["itinerary_results"]["message"],
+        )
+
+    def test_mock_parser_retains_explicit_itinerary_interests(self):
+        plan = MasterAgent()._mock_response(
+            "Plan a trip to Singapore from Bengaluru from May 5, 2027 "
+            "to May 12, 2027 with food, shopping and nature"
+        )
+
+        self.assertEqual(plan.preferences, ["nature", "food", "shopping"])
 
     async def test_routes_day_by_day_request_and_passes_provider_results(self):
         agent = MasterAgent()
