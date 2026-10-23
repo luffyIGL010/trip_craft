@@ -638,7 +638,9 @@ class MasterAgentItineraryRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_itinerary_exception_does_not_discard_other_trip_results(self):
         agent = MasterAgent()
         agent.client = None
-        agent._mock_response = Mock(return_value=make_plan())
+        agent._mock_response = Mock(
+            return_value=make_plan(tasks=["find_transport", "find_hotel"])
+        )
         transport = TransportResult(status="success")
         hotels = HotelResult(status="success")
         weather = {
