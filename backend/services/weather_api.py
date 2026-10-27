@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from services.redis_manager import RedisCache, positive_int_setting, redis_cache
+
 logger = logging.getLogger(__name__)
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -95,9 +97,11 @@ class OpenMeteoWeatherService:
         self,
         transport: Optional[httpx.AsyncBaseTransport] = None,
         timeout: float = 15.0,
+        cache: Optional[RedisCache] = None,
     ):
         self.transport = transport
         self.timeout = timeout
+        self.cache = cache or redis_cache
 
     async def get_trip_weather(
         self,
@@ -203,6 +207,46 @@ class OpenMeteoWeatherService:
             )
 
     async def _resolve_location(self, client: httpx.AsyncClient, destination: str):
+        async def load_location():
+            location, status, message = await self._lookup_location(
+                client,
+                destination,
+            )
+            if location is not None:
+                return {"location": location}
+            return {"status": status, "message": message}
+
+        def valid_location(value):
+            return (
+                isinstance(value, dict)
+                and isinstance(value.get("location"), dict)
+                and isinstance(value["location"].get("name"), str)
+                and _valid_coordinates(value["location"])
+            )
+
+        result = await self.cache.get_or_set(
+            "open-meteo-geocoding",
+            {"destination": " ".join(destination.casefold().split())},
+            load_location,
+            ttl_seconds=positive_int_setting(
+                "REDIS_GEOCODING_CACHE_TTL",
+                86400,
+            ),
+            should_cache=valid_location,
+            validate_cached=valid_location,
+        )
+        if valid_location(result):
+            return result["location"], "success", None
+        return (
+            None,
+            result.get("status", "unavailable"),
+            result.get(
+                "message",
+                "The destination could not be resolved to a weather location.",
+            ),
+        )
+
+    async def _lookup_location(self, client: httpx.AsyncClient, destination: str):
         response = await client.get(
             GEOCODING_URL,
             params={

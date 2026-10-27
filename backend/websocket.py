@@ -20,6 +20,13 @@ from preferences.service import (
     list_preferences,
     upsert_preference,
 )
+from services.rate_limiter import (
+    RateLimitUnavailable,
+    RedisRateLimiter,
+    rate_limit_policy,
+    rate_limiting_enabled,
+)
+from services.redis_manager import redis_manager
 
 # Setup logging for development
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +37,7 @@ AUTH_SUBPROTOCOL_PREFIX = "travelagent.auth."
 
 # Initialize the Master Agent orchestrator once at startup
 master_agent = MasterAgent()
+rate_limiter = RedisRateLimiter(redis_manager)
 
 def get_user_from_token(token: str, db: Session):
     """Decode JWT and return the User object, or None if invalid."""
@@ -110,6 +118,36 @@ async def websocket_endpoint(
                 if not user_message:
                     await websocket.send_json({"error": "Please enter a travel request."})
                     continue
+
+                if rate_limiting_enabled() and redis_manager.configured:
+                    limit, window_seconds = rate_limit_policy("itinerary")
+                    try:
+                        rate_result = await rate_limiter.check(
+                            "itinerary",
+                            f"user:{user.id}",
+                            limit,
+                            window_seconds,
+                        )
+                    except RateLimitUnavailable:
+                        logger.warning(
+                            "Trip planning denied because Redis rate limiting is unavailable."
+                        )
+                        await websocket.send_json({
+                            "error": (
+                                "Trip planning is temporarily unavailable because "
+                                "request limits could not be enforced."
+                            )
+                        })
+                        continue
+                    if not rate_result.allowed:
+                        await websocket.send_json({
+                            "type": "rate_limit",
+                            "error": "Too many trip-planning requests. Please try again later.",
+                            "limit": rate_result.limit,
+                            "remaining": rate_result.remaining,
+                            "retry_after_seconds": rate_result.retry_after_seconds,
+                        })
+                        continue
                 
                 logger.info("User %s submitted a travel request.", user.id)
                 

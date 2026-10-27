@@ -9,3 +9,4 @@ python-dotenv
 websockets
 groq
 httpx
+redis>=5,<7

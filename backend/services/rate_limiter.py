@@ -3,6 +3,9 @@ import logging
 import os
 from dataclasses import dataclass
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from redis.exceptions import RedisError
 
 from services.redis_manager import RedisConnectionManager, positive_int_setting
@@ -112,4 +115,60 @@ class RedisRateLimiter:
         )
 
 
-redis_rate_limiter = RedisRateLimiter
+class AuthRateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, manager: RedisConnectionManager) -> None:
+        super().__init__(app)
+        self.manager = manager
+        self.limiter = RedisRateLimiter(manager)
+
+    async def dispatch(self, request: Request, call_next):
+        routes = {
+            "/auth/login": "auth_login",
+            "/auth/register": "auth_register",
+        }
+        scope = routes.get(request.url.path)
+        if (
+            request.method != "POST"
+            or scope is None
+            or not rate_limiting_enabled()
+            or not self.manager.configured
+        ):
+            return await call_next(request)
+
+        client = request.client
+        if client is None or not client.host:
+            return JSONResponse(
+                {"detail": "Authentication is temporarily unavailable."},
+                status_code=503,
+            )
+
+        limit, window_seconds = rate_limit_policy(scope)
+        try:
+            result = await self.limiter.check(
+                scope,
+                client.host,
+                limit,
+                window_seconds,
+            )
+        except RateLimitUnavailable:
+            return JSONResponse(
+                {"detail": "Authentication is temporarily unavailable."},
+                status_code=503,
+            )
+
+        headers = {
+            "X-RateLimit-Limit": str(result.limit),
+            "X-RateLimit-Remaining": str(result.remaining),
+            "Retry-After": str(result.retry_after_seconds),
+        }
+        if not result.allowed:
+            return JSONResponse(
+                {"detail": "Too many requests. Please try again later."},
+                status_code=429,
+                headers=headers,
+            )
+
+        response = await call_next(request)
+        for name, value in headers.items():
+            response.headers[name] = value
+        return response
