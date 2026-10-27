@@ -125,7 +125,11 @@ class RedisCache:
         should_cache: Callable[[Any], bool] | None = None,
         validate_cached: Callable[[Any], bool] | None = None,
     ) -> Any:
-        ttl = ttl_seconds or positive_int_setting("REDIS_CACHE_DEFAULT_TTL", 300)
+        ttl = (
+            ttl_seconds
+            if ttl_seconds is not None
+            else positive_int_setting("REDIS_CACHE_DEFAULT_TTL", 300)
+        )
         if ttl <= 0:
             raise ValueError("Cache TTL must be a positive integer")
 
