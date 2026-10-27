@@ -15,7 +15,7 @@ from services.rate_limiter import (
     AuthRateLimitMiddleware,
     validate_rate_limit_configuration,
 )
-from services.redis_manager import redis_manager
+from services.redis_manager import redis_manager, validate_cache_configuration
 
 # Fail startup rather than signing tokens with an unsafe fallback.
 require_jwt_secret_key()
@@ -28,6 +28,7 @@ ensure_travel_preference_budget_basis()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_rate_limit_configuration()
+    validate_cache_configuration()
     app.state.redis_manager = redis_manager
     await redis_manager.connect()
     try:

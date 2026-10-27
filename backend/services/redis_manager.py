@@ -25,6 +25,11 @@ def positive_int_setting(name: str, default: int) -> int:
     return parsed
 
 
+def validate_cache_configuration() -> None:
+    positive_int_setting("REDIS_CACHE_DEFAULT_TTL", 300)
+    positive_int_setting("REDIS_GEOCODING_CACHE_TTL", 86400)
+
+
 class RedisConnectionManager:
     def __init__(self) -> None:
         self.url = os.getenv("REDIS_URL")

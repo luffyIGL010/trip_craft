@@ -159,9 +159,9 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         headers = {
             "X-RateLimit-Limit": str(result.limit),
             "X-RateLimit-Remaining": str(result.remaining),
-            "Retry-After": str(result.retry_after_seconds),
         }
         if not result.allowed:
+            headers["Retry-After"] = str(result.retry_after_seconds)
             return JSONResponse(
                 {"detail": "Too many requests. Please try again later."},
                 status_code=429,
