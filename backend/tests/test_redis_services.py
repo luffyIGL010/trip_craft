@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import httpx
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
@@ -269,6 +270,12 @@ class RedisRateLimitTests(unittest.IsolatedAsyncioTestCase):
     async def test_auth_middleware_fails_closed_when_configured_redis_is_unavailable(self):
         app = FastAPI()
         app.add_middleware(AuthRateLimitMiddleware, manager=FakeManager(None))
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["https://tripcraft-frontend-psi.vercel.app"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @app.post("/auth/register")
         async def register():
@@ -276,9 +283,18 @@ class RedisRateLimitTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(os.environ, {"REDIS_RATE_LIMIT_ENABLED": "true"}):
             with TestClient(app) as client:
-                response = client.post("/auth/register")
+                response = client.post(
+                    "/auth/register",
+                    headers={
+                        "Origin": "https://tripcraft-frontend-psi.vercel.app",
+                    },
+                )
 
         self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.headers["access-control-allow-origin"],
+            "https://tripcraft-frontend-psi.vercel.app",
+        )
 
 
 class RateLimitPolicyTests(unittest.TestCase):

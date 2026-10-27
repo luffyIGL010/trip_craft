@@ -57,6 +57,7 @@ origins.update(
     if origin.strip()
 )
 
+app.add_middleware(AuthRateLimitMiddleware, manager=redis_manager)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(origins),
@@ -64,7 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(AuthRateLimitMiddleware, manager=redis_manager)
 
 # Include Authentication Routes
 app.include_router(auth_router)
